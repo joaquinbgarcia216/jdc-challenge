@@ -161,6 +161,24 @@ form.ans input:disabled { opacity: .5; }
 .ntools button { border: 1px solid var(--line); background: var(--bg); font-size: 13px; font-weight: 600; padding: 10px 4px; border-radius: 8px; cursor: pointer; }
 .ntools button[aria-pressed="true"] { background: var(--signal); color: #1a1206; border-color: var(--signal); }
 .ntools button:disabled { opacity: .4; }
+/* practice */
+.ticks { display: flex; flex-direction: column; gap: 8px; }
+.tick { display: grid; grid-template-columns: 1fr 52px 96px; gap: 8px; align-items: stretch; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 8px; min-width: 0; }
+.tick .who { justify-content: center; padding-left: 6px; }
+.tick .n { font: 700 34px var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); line-height: 1; }
+.tick .n.zero { color: var(--muted); }
+.tick .minus { border: 1px solid var(--line); background: var(--bg); border-radius: 10px; font: 700 22px var(--mono); color: var(--muted); cursor: pointer; }
+.tick .plus { border: 0; background: var(--signal); color: #1a1206; border-radius: 10px; font: 700 26px var(--display); cursor: pointer; min-height: 64px; touch-action: manipulation; }
+.tick .plus:active { transform: scale(.97); }
+.tick .who b { font-size: 16px; }
+.addppl { display: flex; flex-wrap: wrap; gap: 6px; }
+.addppl button { border: 1px dashed var(--line); background: none; color: var(--muted); border-radius: 999px; padding: 7px 12px; font-size: 13px; cursor: pointer; }
+.tally { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; font-size: 15px; }
+.tally b { font: 700 15px var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
+.announce { border: 1px solid var(--signal); background: var(--signal-dim); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.announce .pun { font-family: var(--display); font-weight: 700; font-size: 18px; }
+.check { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+.check input { width: 20px; height: 20px; accent-color: var(--signal); }
 @media (prefers-reduced-motion: reduce) { .eyebrow::before, .shake { animation: none; } * { transition: none !important; } }
 </style>
 </head>
@@ -171,19 +189,22 @@ form.ans input:disabled { opacity: .5; }
       <div class="eyebrow">JDC West · Challenge 2027</div>
       <h1>Challenge HQ</h1>
     </div>
-    <div class="av" id="meAv" hidden style="width:36px;height:36px"></div>
+    <button class="av" id="meAv" type="button" hidden aria-label="Your account" style="width:36px;height:36px;border:0;cursor:pointer"></button>
   </header>
+  <div class="card" id="meCard" hidden></div>
   <p class="banner" id="banner" hidden></p>
   <section id="v-pick" class="stack" hidden></section>
   <section id="v-today" class="stack" hidden></section>
   <section id="v-ranks" class="stack" hidden></section>
   <section id="v-history" class="stack" hidden></section>
+  <section id="v-practice" class="stack" hidden></section>
   <section id="v-coach" class="stack" hidden></section>
 </div>
 <nav class="tab-bar" id="tabbar" hidden aria-label="Sections"><div class="tabs" id="tabs">
   <button data-v="today">Today</button>
   <button data-v="ranks">Rankings</button>
   <button data-v="history">History</button>
+  <button data-v="practice" id="practiceTab" hidden>Practice</button>
   <button data-v="coach" id="coachTab" hidden>Coach</button>
 </div></nav>
 
@@ -234,6 +255,11 @@ let coachPass = store.get('jdc-coach');
 let S = null;            // get_state()
 let C = null;            // coach_state()
 let skew = 0;            // server now - local now
+let meOpen = false;
+let PR = null;              // coach_practices()
+const pendingTicks = {};    // challenger id -> taps not yet confirmed
+let lastTapAt = 0, practiceRetry = null;
+let coachMode = null;        // null | 'edit' | 'preview' for the selected puzzle
 let view = coachPass && store.get('jdc-watch') === '1' ? 'coach' : 'today', mountedKey = null, coachPick = null, picking = null;
 let bannerMsg = '', bannerErr = false;
 
@@ -247,17 +273,24 @@ const resultFor = (pid, cid, src) => (src || S.results).find(r => r.puzzle_id ==
 const serverNow = () => Date.now() + skew;
 
 /* ---------- scoring ---------- */
+const roleOf = id => ((C && C.challengers.find(c => c.id === id)) || people().find(c => c.id === id) || {}).role || 'challenger';
+const isGuest = id => roleOf(id) === 'guest';
+// Guests appear in the solve order but never take a place or points from challengers.
 function standings(pid, src) {
   const rows = (src || S.results).filter(r => r.puzzle_id === pid);
-  const solved = rows.filter(r => r.solved_at).sort((a, b) => ms(a.solved_at) - ms(b.solved_at))
-    .map((r, i) => ({ r, id: r.challenger_id, place: i + 1, pts: i < RANK_PTS.length ? RANK_PTS[i] : FINISH_PTS }));
-  const trying = rows.filter(r => !r.solved_at).sort((a, b) => b.attempts - a.attempts).map(r => ({ r, id: r.challenger_id }));
+  let place = 0;
+  const solved = rows.filter(r => r.solved_at).sort((a, b) => ms(a.solved_at) - ms(b.solved_at)).map(r => {
+    const id = r.challenger_id;
+    if (isGuest(id)) return { r, id, guest: true, place: null, pts: 0 };
+    place++; return { r, id, place, pts: place <= RANK_PTS.length ? RANK_PTS[place - 1] : FINISH_PTS };
+  });
+  const trying = rows.filter(r => !r.solved_at).sort((a, b) => b.attempts - a.attempts).map(r => ({ r, id: r.challenger_id, guest: isGuest(r.challenger_id) }));
   return { solved, trying };
 }
 function overall() {
   const t = {};
-  people().forEach(c => t[c.id] = { id: c.id, pts: 0, wins: 0, podiums: 0, solved: 0 });
-  released().forEach(p => standings(p.id).solved.forEach(x => {
+  people().filter(c => c.role !== 'guest').forEach(c => t[c.id] = { id: c.id, pts: 0, wins: 0, podiums: 0, solved: 0 });
+  released().forEach(p => standings(p.id).solved.filter(x => !x.guest).forEach(x => {
     const r = t[x.id] || (t[x.id] = { id: x.id, pts: 0, wins: 0, podiums: 0, solved: 0 });
     r.pts += x.pts; r.solved++; if (x.place === 1) r.wins++; if (x.place <= 3) r.podiums++;
   }));
@@ -281,9 +314,10 @@ function standingsList(p, showTrying) {
     const bits = ['took ' + fmtDur(ms(x.r.solved_at) - ms(x.r.opened_at))];
     if (p.type === 'riddle') bits.push(`${x.r.attempts + 1} ${x.r.attempts ? 'tries' : 'try'}`);
     if (x.r.hint_used) bits.push('hint');
-    ul.appendChild(personRow(x.place, personOf(x.id), bits.join(' · '), '+' + x.pts, 'PTS'));
+    if (x.guest) bits.unshift('guest');
+    ul.appendChild(personRow(x.place, personOf(x.id), bits.join(' · '), x.guest ? '' : '+' + x.pts, x.guest ? '' : 'PTS'));
   });
-  if (showTrying) trying.forEach(x => ul.appendChild(personRow(null, personOf(x.id), p.type === 'riddle' ? `working · ${x.r.attempts} wrong` : 'working on it', '', '')));
+  if (showTrying) trying.forEach(x => ul.appendChild(personRow(null, personOf(x.id), (x.guest ? 'guest · ' : '') + (p.type === 'riddle' ? `working · ${x.r.attempts} wrong` : 'working on it'), '', '')));
   if (!ul.children.length) ul.appendChild(el('li', 'empty', 'Nobody has solved this one yet.'));
   return ul;
 }
@@ -293,47 +327,100 @@ function setBanner(msg, err) { bannerMsg = msg || ''; bannerErr = !!err; $('bann
 /* ---------- name picker ---------- */
 function renderPick() {
   const v = $('v-pick'); v.replaceChildren();
-  v.append(el('h2', null, 'Who’s playing?'), el('p', 'sub', 'Tap your name once. This phone remembers you after that.'));
+  v.append(el('h2', null, 'Who’s playing?'), el('p', 'sub', 'Tap your name. First time, you make a 4-digit PIN. On a new phone, just enter it again.'));
   const list = people();
-  if (!list.length) { v.appendChild(el('p', 'empty', 'The team list is empty. Ask Joaquin to add you.')); }
-  const grid = el('div', 'names');
-  list.forEach(c => {
-    const b = el('button'); b.type = 'button'; b.disabled = c.claimed; b.setAttribute('aria-pressed', String(picking === c.id));
-    b.append(el('b', null, c.name), el('span', null, c.claimed ? 'Taken' : picking === c.id ? 'Selected' : 'Tap to pick'));
-    b.onclick = () => { picking = c.id; renderPick(); };
-    grid.appendChild(b);
+  if (!list.length) v.appendChild(el('p', 'empty', 'The team list is empty. Ask Joaquin to add you.'));
+  const groups = [['Challengers', list.filter(c => c.role !== 'guest')], ['Guests', list.filter(c => c.role === 'guest')]];
+  groups.forEach(([label, arr]) => {
+    if (!arr.length) return;
+    if (groups[1][1].length) v.appendChild(el('h3', null, label));
+    const grid = el('div', 'names');
+    arr.forEach(c => {
+      const b = el('button'); b.type = 'button'; b.setAttribute('aria-pressed', String(picking === c.id));
+      b.append(el('b', null, c.name), el('span', null, picking === c.id ? 'Selected' : c.claimed ? 'Enter PIN' : 'New · set a PIN'));
+      b.onclick = () => { picking = c.id; renderPick(); const i = $('pinIn'); if (i) i.focus(); };
+      grid.appendChild(b);
+    });
+    v.appendChild(grid);
   });
-  v.appendChild(grid);
   if (picking) {
     const c = list.find(x => x.id === picking);
-    const card = el('div', 'card');
-    card.append(el('p', null, `Link this phone to ${c ? c.name : 'this name'}? To switch names later, you’ll need to ask Joaquin.`));
+    if (!c) { picking = null; return renderPick(); }
+    const f = el('form', 'card'); f.autocomplete = 'off';
+    f.appendChild(el('p', null, c.claimed ? `Enter ${c.name}’s PIN.` : `Make a 4-digit PIN for ${c.name}. You’ll need it if you switch phones, so pick one you’ll remember.`));
+    const inp = el('input'); inp.type = 'text'; inp.id = 'pinIn'; inp.inputMode = 'numeric'; inp.maxLength = 4; inp.pattern = '[0-9]*';
+    inp.placeholder = '••••'; inp.setAttribute('aria-label', '4-digit PIN'); inp.setAttribute('autocomplete', 'off');
+    inp.style.cssText = 'font-size:28px;letter-spacing:.5em;text-align:center';
+    inp.oninput = () => { inp.value = inp.value.replace(/\D/g, '').slice(0, 4); };
+    const msg = el('p', 'msg');
     const r = el('div', 'row');
-    const yes = el('button', 'btn primary', 'That’s me'); yes.type = 'button';
+    const yes = el('button', 'btn primary', c.claimed ? 'Log in' : 'Set PIN & play'); yes.type = 'submit';
     const no = el('button', 'btn', 'Cancel'); no.type = 'button';
     no.onclick = () => { picking = null; renderPick(); };
-    yes.onclick = async () => {
+    f.onsubmit = async e => {
+      e.preventDefault();
+      if (!/^\d{4}$/.test(inp.value)) { msg.className = 'msg bad'; msg.textContent = 'Your PIN is 4 digits.'; return; }
       yes.disabled = true;
-      try { token = await rpc('claim', { p_challenger: picking }); store.set('jdc-token', token); picking = null; setBanner(''); await refresh(); }
-      catch (e) { setBanner(e.message, true); yes.disabled = false; picking = null; await refresh(); }
+      try {
+        const res = await rpc('claim', { p_challenger: c.id, p_pin: inp.value });
+        if (res && res.token) { token = res.token; store.set('jdc-token', token); store.set('jdc-watch', null); picking = null; setBanner(''); await refresh(); return; }
+        msg.className = 'msg bad'; msg.textContent = (res && res.error) || 'That didn’t work.'; inp.select();
+      } catch (err) { msg.className = 'msg bad'; msg.textContent = err.message; }
+      yes.disabled = false;
     };
-    r.append(yes, no); card.appendChild(r); v.appendChild(card);
+    r.append(yes, no); f.append(inp, msg, r); v.appendChild(f);
   }
-  if (coachPass) { const w = el('button', 'btn small', 'Just watching (coach)'); w.type = 'button'; w.onclick = () => { store.set('jdc-watch', '1'); route(); }; v.appendChild(w); }
+  if (coachPass) { const w = el('button', 'btn small', 'Just watching (coach)'); w.type = 'button'; w.onclick = () => { store.set('jdc-watch', '1'); view = 'coach'; route(); }; v.appendChild(w); }
+}
+
+function renderMeCard() {
+  const box = $('meCard'); if (!box) return;
+  const me = S && S.me && people().find(c => c.id === S.me);
+  box.hidden = !(meOpen && me); if (!me || !meOpen) return;
+  box.replaceChildren();
+  box.appendChild(el('p', null, `Signed in as ${me.name}${me.role === 'guest' ? ' (guest)' : ''}.`));
+  const r = el('div', 'row');
+  r.appendChild(confirmButton('Log out of this phone', 'Tap again to log out', async () => {
+    try { await rpc('logout', { p_token: token }); } catch (e) {}
+    token = null; store.set('jdc-token', null); meOpen = false; mountedKey = null; await refresh();
+  }));
+  const close = el('button', 'btn small', 'Close'); close.type = 'button'; close.onclick = () => { meOpen = false; renderMeCard(); };
+  r.appendChild(close); box.appendChild(r);
+  box.appendChild(el('p', 'legend', 'You can log back in anytime with your name and PIN.'));
 }
 
 /* ---------- today ---------- */
+function renderAnnouncement() {
+  const box = $('announceBox'); if (!box) return;
+  const a = S && S.announcement;
+  const seen = store.get('jdc-seen-practice');
+  if (!a || seen === a.id) { box.hidden = true; return; }
+  box.hidden = false; box.replaceChildren();
+  const h = el('div', 'row between wrap'); h.append(el('h3', null, 'Practice results · ' + fmtWhen(ms(a.ended_at))));
+  box.appendChild(h);
+  if (a.punishment) box.appendChild(el('p', 'pun', a.punishment));
+  const t = el('div', 'tally');
+  [...a.people].sort((x, y) => y.ticks - x.ticks).forEach(x => { const n = el('span', null, nameOf(x.challenger_id)); if (S.me === x.challenger_id) n.style.color = 'var(--signal)'; t.append(n, el('b', null, x.ticks + (x.ticks === 1 ? ' tick' : ' ticks'))); });
+  box.appendChild(t);
+  const ok = el('button', 'btn small', 'Got it'); ok.type = 'button';
+  ok.onclick = () => { store.set('jdc-seen-practice', a.id); renderAnnouncement(); };
+  box.appendChild(ok);
+}
 function renderToday() {
   const v = $('v-today');
   const p = livePuzzles()[0];
+  if (!$('announceBox') || !v.contains($('announceBox'))) mountedKey = null;
   if (!p) {
     mountedKey = null;
-    v.replaceChildren(el('h2', null, 'No puzzle live right now'), el('p', 'sub', 'The next one drops in the group chat. Check Rankings to see where you stand.'));
+    const ab = el('div', 'announce'); ab.id = 'announceBox';
+    v.replaceChildren(ab, el('h2', null, 'No puzzle live right now'), el('p', 'sub', 'The next one drops in the group chat. Check Rankings to see where you stand.'));
+    renderAnnouncement();
     return;
   }
   const key = p.id + ':' + (S.me || 'watch');
   if (mountedKey !== key) {
     mountedKey = key; v.replaceChildren();
+    const ab = el('div', 'announce'); ab.id = 'announceBox'; v.appendChild(ab);
     const head = el('div', 'stack');
     const r = el('div', 'row wrap'); r.append(chipFor(p), el('span', 'legend', 'Dropped ' + fmtWhen(ms(p.released_at)))); head.appendChild(r);
     head.appendChild(el('h2', null, p.title)); v.appendChild(head);
@@ -344,6 +431,7 @@ function renderToday() {
     const side = el('div', 'card'); side.id = 'todaySide'; v.appendChild(side);
     if (S.me) rpc('open_puzzle', { p_token: token, p_puzzle: p.id }).then(refresh).catch(() => {});
   }
+  renderAnnouncement();
   const side = $('todaySide');
   const { solved, trying } = standings(p.id);
   const head = el('div', 'row between'); head.append(el('h3', null, 'Solve order'), el('span', 'legend', `${solved.length} solved · ${trying.length} working`));
@@ -383,7 +471,7 @@ function renderHistory() {
     const sum = el('summary'); sum.appendChild(el('span', 't', p.title));
     const mine = S.me && resultFor(p.id, S.me);
     const me = mine && mine.solved_at ? s.solved.find(x => x.id === S.me) : null;
-    sum.appendChild(el('span', 'chip' + (me ? ' done' : ''), me ? ordinal(me.place) : mine ? 'unsolved' : '—'));
+    sum.appendChild(el('span', 'chip' + (me ? ' done' : ''), me ? (me.place ? ordinal(me.place) : 'solved') : mine ? 'unsolved' : '—'));
     const m = el('span', 'm'); m.append(chipFor(p), el('span', null, fmtWhen(ms(p.released_at))), el('span', null, `${s.solved.length} solved`));
     if (s.solved[0]) m.appendChild(el('span', null, 'winner ' + nameOf(s.solved[0].id)));
     sum.appendChild(m); d.appendChild(sum);
@@ -424,7 +512,8 @@ function renderCoach() {
   const v = $('v-coach');
   if (!coachPass) return renderCoachLogin();
   if (!C) { v.replaceChildren(el('p', 'sub', 'Loading coach data…')); return; }
-  const prevCode = ($('codeIn') || {}).value || '', prevName = ($('nameIn') || {}).value || '';
+  if (coachMode && $('coachPanel')) return;   // keep the open editor/preview as-is
+  const prevCode = ($('codeIn') || {}).value || '', prevName = ($('nameIn') || {}).value || '', prevPass = ($('newPass') || {}).value || '';
   v.replaceChildren(el('h2', null, 'Coach view'));
 
   // puzzles
@@ -436,7 +525,7 @@ function renderCoach() {
     const r = el('div', 'prow');
     const n = el('button', 'pname' + (p.id === coachPick ? ' sel' : '')); n.type = 'button';
     n.append(p.title, el('small', null, `${TYPE_LABEL[p.type] || p.type}${p.released_at ? ' · ' + fmtWhen(ms(p.released_at)) : ''}`));
-    n.onclick = () => { coachPick = p.id; renderCoach(); };
+    n.onclick = () => { coachPick = p.id; coachMode = null; renderCoach(); };
     const seg = el('div', 'seg');
     ['draft', 'live', 'closed'].forEach(s => { const b = el('button', null, s); b.type = 'button'; b.setAttribute('aria-pressed', String(p.status === s)); b.onclick = () => coachDo('coach_set_status', { p_puzzle: p.id, p_status: s }).catch(e => setBanner(e.message, true)); seg.appendChild(b); });
     r.append(n, seg); pc.appendChild(r);
@@ -459,7 +548,7 @@ function renderCoach() {
     rows.forEach(x => {
       const tr = el('tr');
       tr.appendChild(el('td', 'num', x.place ? String(x.place) : ''));
-      const nt = el('td'); nt.appendChild(document.createTextNode(nameOf(x.id)));
+      const nt = el('td'); nt.appendChild(document.createTextNode(nameOf(x.id) + (isGuest(x.id) ? ' (guest)' : '')));
       if (x.r && x.r.tries && x.r.tries.length) nt.appendChild(el('div', 'tries', x.r.tries.slice(-5).join(' · ')));
       tr.appendChild(nt);
       tr.appendChild(el('td', x.r ? (x.r.solved_at ? 'st-ok' : 'st-wip') : 'st-no', x.r ? (x.r.solved_at ? 'Solved' + (x.r.hint_used ? ' (hint)' : '') : 'Working' + (x.r.hint_used ? ' (hint)' : '')) : 'Not opened'));
@@ -468,8 +557,19 @@ function renderCoach() {
       body.appendChild(tr);
     });
     tb.appendChild(body); tw.appendChild(tb); card.appendChild(tw);
-    if (p.status === 'draft') { const r = el('div', 'row'); r.appendChild(confirmButton('Delete draft', 'Tap again to delete', () => coachDo('coach_delete_puzzle', { p_puzzle: p.id }), 'danger')); card.appendChild(r); }
+    const acts = el('div', 'row wrap');
+    const pv = el('button', 'btn small', 'Preview'); pv.type = 'button'; pv.onclick = () => { coachMode = 'preview'; renderCoach(); };
+    const ed = el('button', 'btn small', 'Edit'); ed.type = 'button'; ed.onclick = () => { coachMode = 'edit'; renderCoach(); };
+    acts.append(pv, ed);
+    if (p.status === 'draft') acts.appendChild(confirmButton('Delete draft', 'Tap again to delete', () => coachDo('coach_delete_puzzle', { p_puzzle: p.id }), 'danger'));
+    card.appendChild(acts);
     v.appendChild(card);
+    if (coachMode) {
+      const panel = el('div', 'card'); panel.id = 'coachPanel';
+      v.appendChild(panel);
+      if (coachMode === 'edit') renderEditor(panel, p, solved.length); else renderPreview(panel, p);
+      panel.scrollIntoView({ block: 'start' });
+    }
   }
 
   // add puzzle
@@ -491,18 +591,48 @@ function renderCoach() {
   const team = el('div', 'card'); team.appendChild(el('h3', null, 'Team'));
   C.challengers.forEach(c => {
     const r = el('div', 'prow');
-    const info = el('div', 'who'); info.append(el('b', null, c.name), el('span', null, c.claimed ? 'Linked ' + fmtWhen(ms(c.claimed_at)) : 'Not linked yet'));
-    const acts = el('div', 'row');
-    if (c.claimed) acts.appendChild(confirmButton('Unlink phone', 'Tap again', () => coachDo('coach_reset_claim', { p_challenger: c.id })));
+    const status = c.locked ? 'PIN locked after wrong tries' : c.claimed ? `PIN set · ${c.devices} ${c.devices === 1 ? 'phone' : 'phones'}` : 'No PIN yet';
+    const info = el('div', 'who'); info.append(el('b', null, c.name), el('span', null, status)); info.style.flex = '1 1 140px';
+    const seg = el('div', 'seg');
+    [['challenger', 'Challenger'], ['guest', 'Guest']].forEach(([k, label]) => { const b = el('button', null, label); b.type = 'button'; b.setAttribute('aria-pressed', String(c.role === k)); b.onclick = () => c.role !== k && coachDo('coach_set_role', { p_challenger: c.id, p_role: k }).catch(e => setBanner(e.message, true)); seg.appendChild(b); });
+    const acts = el('div', 'row wrap');
+    acts.appendChild(seg);
+    if (c.claimed || c.locked) acts.appendChild(confirmButton('Reset PIN', 'Tap again', () => coachDo('coach_reset_claim', { p_challenger: c.id })));
     acts.appendChild(confirmButton('Remove', 'Removes results too', () => coachDo('coach_remove_challenger', { p_challenger: c.id }), 'danger'));
     r.append(info, acts); team.appendChild(r);
   });
-  const af = el('form', 'row'); const ni = el('input'); ni.type = 'text'; ni.id = 'nameIn'; ni.placeholder = 'Add a challenger'; ni.value = prevName; ni.setAttribute('aria-label', 'New challenger name');
-  const nb = el('button', 'btn', 'Add'); nb.type = 'submit';
-  af.onsubmit = async e => { e.preventDefault(); if (!ni.value.trim()) return; nb.disabled = true; try { await coachDo('coach_add_challenger', { p_name: ni.value.trim() }); ni.value = ''; } catch (err) { setBanner(err.message, true); } nb.disabled = false; };
-  af.append(ni, nb); team.appendChild(af);
-  team.appendChild(el('p', 'legend', 'Unlink a phone when someone switches phones or picked the wrong name. They pick again next time they open the link.'));
+  const af = el('form', 'stack'); const ni = el('input'); ni.type = 'text'; ni.id = 'nameIn'; ni.placeholder = 'Name'; ni.value = prevName; ni.setAttribute('aria-label', 'New person’s name');
+  const ar = el('div', 'row wrap');
+  const cb = el('button', 'btn', 'Add challenger'); cb.type = 'button';
+  const gb = el('button', 'btn', 'Add guest'); gb.type = 'button';
+  const addAs = async (role, btn) => { if (!ni.value.trim()) { ni.focus(); return; } btn.disabled = true; try { await coachDo('coach_add_challenger', { p_name: ni.value.trim(), p_role: role }); ni.value = ''; } catch (err) { setBanner(err.message, true); } btn.disabled = false; };
+  cb.onclick = () => addAs('challenger', cb); gb.onclick = () => addAs('guest', gb);
+  af.onsubmit = e => { e.preventDefault(); addAs('challenger', cb); };
+  ar.append(cb, gb); af.append(ni, ar); team.appendChild(af);
+  team.appendChild(el('p', 'legend', 'Guests (assistant coaches, friends) can play and show in the solve order, but never take a place or points. Reset PIN if someone forgets theirs or gets locked out.'));
   v.appendChild(team);
+
+  // play / passphrase
+  const me = el('div', 'card'); me.appendChild(el('h3', null, 'This phone'));
+  if (S && S.me) me.appendChild(el('p', 'sub', `You’re also playing here as ${nameOf(S.me)}.`));
+  else {
+    me.appendChild(el('p', 'sub', 'To test or play yourself, add yourself as a guest above, then play on this phone.'));
+    const pb = el('button', 'btn', 'Play on this phone'); pb.type = 'button';
+    pb.onclick = () => { store.set('jdc-watch', null); view = 'today'; route(); window.scrollTo(0, 0); };
+    me.appendChild(pb);
+  }
+  const pf = el('form', 'stack'); pf.autocomplete = 'off';
+  const pi = el('input'); pi.type = 'text'; pi.id = 'newPass'; pi.placeholder = 'New coach passphrase (8+ characters)'; pi.setAttribute('aria-label', 'New coach passphrase'); pi.value = prevPass;
+  const pbtn = el('button', 'btn', 'Change coach passphrase'); pbtn.type = 'submit'; const pm = el('p', 'msg');
+  pf.onsubmit = async e => {
+    e.preventDefault(); const np = pi.value.trim(); if (np.length < 8) { pm.className = 'msg bad'; pm.textContent = 'Use at least 8 characters.'; return; }
+    pbtn.disabled = true;
+    try { await rpc('coach_change_pass', { p_pass: coachPass, p_new: np }); coachPass = np; store.set('jdc-coach', np); pi.value = ''; pm.className = 'msg'; pm.textContent = 'Changed. Anyone using the old passphrase is logged out of coach.'; }
+    catch (err) { pm.className = 'msg bad'; pm.textContent = err.message; }
+    pbtn.disabled = false;
+  };
+  pf.append(pi, pbtn, pm); me.appendChild(pf);
+  v.appendChild(me);
 
   const out = el('button', 'btn small', 'Log out of coach'); out.type = 'button';
   out.onclick = () => { coachPass = null; C = null; store.set('jdc-coach', null); store.set('jdc-watch', null); view = 'today'; route(); };
@@ -516,9 +646,177 @@ function decodeCode(raw) {
   return def;
 }
 
+/* ---------- coach: edit + preview ---------- */
+function field(label, input) { const w = el('label', 'stack'); w.style.gap = '6px'; w.append(el('h3', null, label), input); return w; }
+function renderEditor(panel, p, solvedCount) {
+  const cfg = p.config || {};
+  panel.appendChild(el('h2', null, 'Edit puzzle'));
+  const title = el('input'); title.type = 'text'; title.id = 'edTitle'; title.value = p.title;
+  const brief = el('textarea'); brief.id = 'edBrief'; brief.value = cfg.brief || ''; brief.placeholder = 'Shown above the puzzle, e.g. how to submit, what the answer unlocks.';
+  panel.append(field('Title', title), field('Description / rules', brief));
+  let verse, ask, answers, hint;
+  if (p.type === 'riddle') {
+    verse = el('textarea'); verse.id = 'edVerse'; verse.value = cfg.verse || ''; verse.style.minHeight = '140px'; verse.style.fontFamily = 'var(--verse)';
+    ask = el('input'); ask.type = 'text'; ask.id = 'edAsk'; ask.value = cfg.ask || ''; ask.placeholder = 'e.g. What am I?';
+    answers = el('textarea'); answers.id = 'edAnswers'; answers.value = (p.answers || []).join('\n'); answers.placeholder = 'One accepted answer per line';
+    hint = el('input'); hint.type = 'text'; hint.id = 'edHint'; hint.value = p.hint || ''; hint.placeholder = 'Leave empty for no hint';
+    panel.append(field('Riddle', verse), field('Question', ask), field('Accepted answers', answers));
+    panel.appendChild(el('p', 'legend', `Capitals, punctuation and words like “a”, “the”, “my” are ignored${cfg.numeric ? ', and only digits count' : ''}.`));
+    if (solvedCount) panel.appendChild(el('p', 'banner', `${solvedCount} ${solvedCount === 1 ? 'person has' : 'people have'} already solved this. Changing the answers won’t undo their solves.`));
+    panel.appendChild(field('Hint', hint));
+  } else {
+    panel.appendChild(el('p', 'legend', `The ${TYPE_LABEL[p.type] || p.type} itself can’t be edited here. Ask Claude for a new code to change it.`));
+  }
+  const msg = el('p', 'msg');
+  const r = el('div', 'row wrap');
+  const save = el('button', 'btn primary', 'Save'); save.type = 'button';
+  const cancel = el('button', 'btn', 'Cancel'); cancel.type = 'button';
+  cancel.onclick = () => { coachMode = null; renderCoach(); };
+  save.onclick = async () => {
+    save.disabled = true;
+    const args = { p_pass: coachPass, p_puzzle: p.id, p_title: title.value, p_brief: brief.value, p_riddle: null };
+    if (p.type === 'riddle') args.p_riddle = { verse: verse.value, ask: ask.value, hint: hint.value, answers: answers.value.split('\n').map(x => x.trim()).filter(Boolean) };
+    try { await rpc('coach_update_puzzle', args); coachMode = null; mountedKey = null; setBanner(''); await refresh(); }
+    catch (e) { msg.className = 'msg bad'; msg.textContent = e.message; save.disabled = false; }
+  };
+  r.append(save, cancel); panel.append(msg, r);
+}
+function renderPreview(panel, p) {
+  panel.replaceChildren();
+  const head = el('div', 'row between wrap'); head.append(el('h2', null, 'Preview'), el('span', 'chip', 'Nothing is recorded'));
+  panel.append(head, el('h2', null, p.title));
+  const body = el('div', 'stack'); panel.appendChild(body);
+  if (p.type === 'nonogram') { store.set('jdc-nono-preview-' + p.id, null); mountNonogram(body, p, { preview: true }); }
+  else if (p.type === 'riddle') {
+    const cfg = p.config || {};
+    if (cfg.brief) body.appendChild(el('p', 'sub', cfg.brief));
+    body.appendChild(el('p', 'verse', cfg.verse || ''));
+    if (cfg.ask) body.appendChild(el('p', 'ask', cfg.ask));
+    const f = el('form', 'ans'); f.autocomplete = 'off';
+    const inp = el('input'); inp.type = 'text'; inp.id = 'pvAns'; inp.placeholder = cfg.placeholder || 'Your answer'; inp.setAttribute('aria-label', 'Test an answer');
+    if (cfg.numeric) inp.inputMode = 'numeric';
+    const go = el('button', 'btn primary', 'Check'); go.type = 'submit'; f.append(inp, go);
+    const msg = el('p', 'msg');
+    f.onsubmit = async e => {
+      e.preventDefault(); if (!inp.value.trim()) return; go.disabled = true;
+      try { const okAns = await rpc('coach_check_answer', { p_pass: coachPass, p_puzzle: p.id, p_guess: inp.value }); msg.className = okAns ? 'msg' : 'msg bad'; msg.style.color = okAns ? 'var(--ok)' : ''; msg.textContent = okAns ? `“${inp.value}” would be accepted.` : `“${inp.value}” would be wrong.`; }
+      catch (err) { msg.className = 'msg bad'; msg.textContent = err.message; }
+      go.disabled = false;
+    };
+    body.append(f, msg);
+    if (p.hint) body.appendChild(el('p', 'hint', `Hint (unlocks after ${cfg.hintAfter || 0} wrong): ${p.hint}`));
+  } else body.appendChild(el('p', 'sub', 'This puzzle type has no preview yet.'));
+  const r = el('div', 'row wrap');
+  const again = el('button', 'btn small', 'Reset preview'); again.type = 'button'; again.onclick = () => renderPreview(panel, p);
+  const close = el('button', 'btn small', 'Close preview'); close.type = 'button'; close.onclick = () => { coachMode = null; renderCoach(); };
+  r.append(again, close); panel.appendChild(r);
+}
+
+/* ---------- practice ticks (coach only) ---------- */
+function practiceTally(pr, wrapEl) {
+  const t = el('div', 'tally');
+  [...pr.people].sort((a, b) => b.ticks - a.ticks || nameOf(a.challenger_id).localeCompare(nameOf(b.challenger_id)))
+    .forEach(x => t.append(el('span', null, nameOf(x.challenger_id) + (isGuest(x.challenger_id) ? ' (guest)' : '')), el('b', null, String(x.ticks))));
+  if (!pr.people.length) t.appendChild(el('span', 'empty', 'Nobody was added.'));
+  wrapEl.appendChild(t);
+}
+function renderPractice() {
+  const v = $('v-practice');
+  if (document.activeElement && document.activeElement.id === 'punIn') return;   // don't wipe what you're typing
+  if (Date.now() - lastTapAt < 4000 || Object.values(pendingTicks).some(n => n)) { clearTimeout(practiceRetry); practiceRetry = setTimeout(renderPractice, 4000); return; }   // don't rebuild under your thumb
+  if (!PR || !C) { v.replaceChildren(el('p', 'sub', 'Loading practice…')); return; }
+  const cur = PR.find(x => !x.ended_at);
+  const prevPun = ($('punIn') || {}).value || '', prevAnn = $('annIn') ? $('annIn').checked : true;
+  v.replaceChildren();
+
+  if (!cur) {
+    v.append(el('h2', null, 'Practice'), el('p', 'sub', 'Start a practice to count ticks. All challengers are added automatically. Add anyone else in the room after.'));
+    const sb = el('button', 'btn primary', 'Start practice'); sb.type = 'button';
+    sb.onclick = async () => { sb.disabled = true; try { await rpc('coach_practice_start', { p_pass: coachPass }); } catch (e) { setBanner(e.message, true); } await refresh(); };
+    v.appendChild(sb);
+  } else {
+    const total = cur.people.reduce((n, x) => n + x.ticks, 0);
+    const head = el('div', 'row between wrap'); head.append(el('h2', null, 'Practice in progress'), el('span', 'legend', 'Started ' + new Date(ms(cur.started_at)).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })));
+    v.appendChild(head);
+    const list = el('div', 'ticks');
+    cur.people.forEach(x => {
+      const id = x.challenger_id;
+      const row = el('div', 'tick');
+      const who = el('div', 'who'); who.appendChild(el('b', null, nameOf(id)));
+      const n = el('div', 'n'); who.appendChild(n);
+      const minus = el('button', 'minus', '−'); minus.type = 'button'; minus.setAttribute('aria-label', 'Remove a tick from ' + nameOf(id));
+      const plus = el('button', 'plus', '+1'); plus.type = 'button'; plus.setAttribute('aria-label', 'Add a tick for ' + nameOf(id));
+      const show = () => { const k = Math.max(0, x.ticks + (pendingTicks[id] || 0)); n.textContent = String(k); n.classList.toggle('zero', k === 0); minus.disabled = k === 0; };
+      const tap = async d => {
+        if (d < 0 && x.ticks + (pendingTicks[id] || 0) <= 0) return;
+        pendingTicks[id] = (pendingTicks[id] || 0) + d; lastTapAt = Date.now(); show();
+        if (d > 0 && navigator.vibrate) { try { navigator.vibrate(15); } catch (e) {} }
+        try { await rpc('coach_tick', { p_pass: coachPass, p_practice: cur.id, p_challenger: id, p_delta: d }); x.ticks = Math.max(0, x.ticks + d); }
+        catch (e) { setBanner('A tick didn’t save: ' + e.message, true); }
+        pendingTicks[id] -= d; show();
+      };
+      plus.onclick = () => tap(1); minus.onclick = () => tap(-1);
+      show();
+      row.append(who, minus, plus); list.appendChild(row);
+    });
+    if (!cur.people.length) list.appendChild(el('p', 'empty', 'Nobody is in this practice yet. Add people below.'));
+    v.appendChild(list);
+
+    const present = new Set(cur.people.map(x => x.challenger_id));
+    const others = C.challengers.filter(c => !present.has(c.id));
+    const ppl = el('div', 'card'); ppl.appendChild(el('h3', null, 'Who’s in the room'));
+    if (others.length) {
+      const add = el('div', 'addppl');
+      others.forEach(c => { const b = el('button', null, '+ ' + c.name); b.type = 'button'; b.onclick = async () => { b.disabled = true; try { await rpc('coach_practice_person', { p_pass: coachPass, p_practice: cur.id, p_challenger: c.id, p_in: true }); } catch (e) { setBanner(e.message, true); } await refresh(); }; add.appendChild(b); });
+      ppl.appendChild(add);
+    } else ppl.appendChild(el('p', 'legend', 'Everyone on the list is here.'));
+    const removable = cur.people.filter(x => x.ticks === 0);
+    if (removable.length) {
+      const rm = el('div', 'addppl');
+      removable.forEach(x => { const b = el('button', null, '− ' + nameOf(x.challenger_id)); b.type = 'button'; b.onclick = async () => { b.disabled = true; try { await rpc('coach_practice_person', { p_pass: coachPass, p_practice: cur.id, p_challenger: x.challenger_id, p_in: false }); } catch (e) { setBanner(e.message, true); } await refresh(); }; rm.appendChild(b); });
+      ppl.append(el('p', 'legend', 'Not here? Remove (only people with 0 ticks):'), rm);
+    }
+    ppl.appendChild(el('p', 'legend', 'To add an exec or yourself, add them as a guest in Coach → Team first.'));
+    v.appendChild(ppl);
+
+    const end = el('div', 'card'); end.appendChild(el('h3', null, `End practice · ${total} ${total === 1 ? 'tick' : 'ticks'} total`));
+    const pi = el('input'); pi.type = 'text'; pi.id = 'punIn'; pi.placeholder = 'Punishment, e.g. 1 push-up per tick'; pi.value = prevPun; pi.setAttribute('aria-label', 'Punishment');
+    const lab = el('label', 'check'); const cb = el('input'); cb.type = 'checkbox'; cb.id = 'annIn'; cb.checked = prevAnn; lab.append(cb, 'Post results to everyone’s app');
+    const r = el('div', 'row wrap');
+    r.appendChild(confirmButton('End practice', 'Tap again to end', async () => {
+      await rpc('coach_practice_end', { p_pass: coachPass, p_practice: cur.id, p_punishment: $('punIn').value, p_announce: $('annIn').checked });
+      await refresh();
+    }, 'primary'));
+    r.appendChild(confirmButton('Discard', 'Delete this practice?', async () => { await rpc('coach_practice_delete', { p_pass: coachPass, p_practice: cur.id }); await refresh(); }, 'danger'));
+    end.append(pi, lab, r); v.appendChild(end);
+  }
+
+  const past = PR.filter(x => x.ended_at);
+  if (past.length) {
+    v.appendChild(el('h3', null, 'Past practices'));
+    const season = {};
+    past.forEach(pr => pr.people.forEach(x => season[x.challenger_id] = (season[x.challenger_id] || 0) + x.ticks));
+    const sc = el('div', 'card'); sc.appendChild(el('h3', null, `Season ticks · ${past.length} ${past.length === 1 ? 'practice' : 'practices'}`));
+    practiceTally({ people: Object.entries(season).map(([challenger_id, ticks]) => ({ challenger_id, ticks })) }, sc);
+    v.appendChild(sc);
+    const wrap = el('div', 'hist');
+    past.forEach(pr => {
+      const d = el('details'); const sum = el('summary');
+      sum.append(el('span', 't', fmtWhen(ms(pr.started_at))), el('span', 'chip' + (pr.announced ? ' done' : ''), pr.announced ? 'posted' : 'private'));
+      const m = el('span', 'm'); m.append(el('span', null, `${pr.people.reduce((n, x) => n + x.ticks, 0)} ticks`)); if (pr.punishment) m.appendChild(el('span', null, pr.punishment)); sum.appendChild(m);
+      d.appendChild(sum);
+      const body = el('div', 'body stack'); practiceTally(pr, body);
+      const dr = el('div', 'row'); dr.appendChild(confirmButton('Delete', 'Tap again to delete', async () => { await rpc('coach_practice_delete', { p_pass: coachPass, p_practice: pr.id }); await refresh(); }, 'danger'));
+      body.appendChild(dr); d.appendChild(body); wrap.appendChild(d);
+    });
+    v.appendChild(wrap);
+  }
+}
+
 /* ---------- riddle ---------- */
 function mountRiddle(card, p) {
   const P = p.config || {};
+  if (P.brief) card.append(el('p', 'sub', P.brief));
   card.append(el('p', 'verse', P.verse || ''));
   if (P.ask) card.append(el('p', 'ask', P.ask));
   const form = el('form', 'ans'); form.autocomplete = 'off';
@@ -539,7 +837,7 @@ function mountRiddle(card, p) {
     const wrong = r ? r.attempts : 0, solved = r && r.solved_at;
     cnt.replaceChildren('Wrong guesses ', el('b', null, String(wrong)));
     const left = Math.max(0, (P.hintAfter || 0) - wrong);
-    hb.hidden = !p.has_hint || !S.me;
+    hb.hidden = !p.has_hint || !S.me || (!!solved && !(r && r.hint_used));
     hb.disabled = left > 0 || (r && r.hint_used) || !!solved || busy;
     hb.textContent = r && r.hint_used ? 'Hint used' : left > 0 ? `Hint unlocks after ${left} more` : 'Reveal hint';
     hint.hidden = !(m && m.hint); hint.textContent = (m && m.hint) || '';
@@ -547,7 +845,7 @@ function mountRiddle(card, p) {
     form.hidden = msg.hidden = !!solved; win.hidden = !solved;
     if (solved) {
       const me = standings(p.id).solved.find(x => x.id === S.me);
-      winTxt.textContent = me ? `You finished ${ordinal(me.place)} and earned ${me.pts} ${me.pts === 1 ? 'point' : 'points'}. Keep the answer to yourself.` : 'Solved. Keep the answer to yourself.';
+      winTxt.textContent = me && me.place ? `You finished ${ordinal(me.place)} and earned ${me.pts} ${me.pts === 1 ? 'point' : 'points'}. Keep the answer to yourself.` : 'Solved. Keep the answer to yourself.';
       stamp.textContent = `${wrong + 1} ${wrong ? 'attempts' : 'attempt'} · ${fmtDur(ms(r.solved_at) - ms(r.opened_at))} · ${r.hint_used ? 'hint used' : 'no hint'}`;
     }
     lock(m && ms(m.locked_until));
@@ -582,13 +880,14 @@ function mountRiddle(card, p) {
 }
 
 /* ---------- nonogram ---------- */
-function mountNonogram(card, p) {
+function mountNonogram(card, p, opts = {}) {
   const cfg = p.config || {}, ROWS = cfg.rows || [], COLS = cfg.cols || [], R = ROWS.length, C = COLS.length;
-  const LK = 'jdc-nono-' + p.id;
+  const LK = (opts.preview ? 'jdc-nono-preview-' : 'jdc-nono-') + p.id;
+  let previewSolved = false;
   let grid = Array.from({ length: R }, () => Array(C).fill(0)), mode = 1, undo = [], sending = false, lastSent = '';
   try { const s = JSON.parse(store.get(LK) || 'null'); if (s && s.grid && s.grid.length === R && s.grid[0].length === C) grid = s.grid; } catch (e) {}
   const save = () => store.set(LK, JSON.stringify({ grid }));
-  const isSolved = () => { const r = S.me && resultFor(p.id, S.me); return !!(r && r.solved_at); };
+  const isSolved = () => { if (opts.preview) return previewSolved; const r = S.me && resultFor(p.id, S.me); return !!(r && r.solved_at); };
 
   if (cfg.brief) card.appendChild(el('p', 'sub', cfg.brief));
   const prog = el('div', 'meta'); card.appendChild(prog);
@@ -628,8 +927,9 @@ function mountNonogram(card, p) {
     for (let r = 0; r < R; r++) { const ok = same(runs(grid[r]), ROWS[r]); rowEls[r].classList.toggle('done', ok); n += ok; }
     for (let c = 0; c < C; c++) { const ok = same(runs(grid.map(x => x[c])), COLS[c]); colEls[c].classList.toggle('done', ok); n += ok; }
     prog.replaceChildren(el('span', null, `${n} / ${R + C} lines cleared`));
+    if (opts.preview && n === R + C) previewSolved = true;
     sync();
-    if (n === R + C && S.me && !isSolved() && !sending) {
+    if (!opts.preview && n === R + C && S.me && !isSolved() && !sending) {
       const rows = grid.map(r => r.map(v => v === 1 ? '1' : '0').join(''));
       const sig = rows.join('|'); if (sig === lastSent) return;
       sending = true; lastSent = sig; prog.replaceChildren(el('span', null, 'Checking with the server…'));
@@ -645,9 +945,10 @@ function mountNonogram(card, p) {
     const solved = isSolved();
     board.classList.toggle('solved', solved); tools.hidden = solved; win.hidden = !solved;
     bF.setAttribute('aria-pressed', String(mode === 1)); bX.setAttribute('aria-pressed', String(mode === 2)); bU.disabled = !undo.length;
-    if (solved) {
+    if (solved && opts.preview) { winTxt.textContent = 'Preview: every clue checks out. Nothing was recorded.'; stamp.textContent = ''; }
+    else if (solved) {
       const r = resultFor(p.id, S.me), me = standings(p.id).solved.find(x => x.id === S.me);
-      winTxt.textContent = (me ? `You finished ${ordinal(me.place)} and earned ${me.pts} ${me.pts === 1 ? 'point' : 'points'}. ` : 'Solved. ') + 'DM Joaquin the room number privately.';
+      winTxt.textContent = (me && me.place ? `You finished ${ordinal(me.place)} and earned ${me.pts} ${me.pts === 1 ? 'point' : 'points'}. ` : 'Solved. ') + 'DM Joaquin the room number privately.';
       stamp.textContent = 'Solved in ' + fmtDur(ms(r.solved_at) - ms(r.opened_at));
     }
   }
@@ -683,25 +984,28 @@ function route() {
   const wantsCoach = location.hash === '#coach';
   const needPick = S && !S.me && !watching() && !(wantsCoach && !coachPass);
   const showLogin = wantsCoach && !coachPass;
-  $('coachTab').hidden = !coachPass;
+  $('coachTab').hidden = !coachPass; $('practiceTab').hidden = !coachPass;
   const tabsOn = !!S && !needPick && !showLogin;
   $('tabbar').hidden = !tabsOn;
   if (showLogin) view = 'coach';
-  if (view === 'coach' && !coachPass && !showLogin) view = 'today';
+  if ((view === 'coach' || view === 'practice') && !coachPass && !showLogin) view = 'today';
   const active = !S ? null : showLogin ? 'coach' : needPick ? 'pick' : view;
-  ['pick', 'today', 'ranks', 'history', 'coach'].forEach(k => $('v-' + k).hidden = k !== active);
+  ['pick', 'today', 'ranks', 'history', 'practice', 'coach'].forEach(k => $('v-' + k).hidden = k !== active);
   $('tabs').querySelectorAll('button').forEach(b => b.setAttribute('aria-current', b.dataset.v === view ? 'page' : 'false'));
   const me = S && S.me && people().find(c => c.id === S.me);
   $('meAv').hidden = !me; if (me) { $('meAv').textContent = me.name[0].toUpperCase(); $('meAv').style.background = colorFor(me.id); $('meAv').title = me.name; }
+  renderMeCard();
   if (!active) return;
-  if (active === 'pick') renderPick();
+  if (active === 'pick' && !(picking && $('pinIn') && !$('v-pick').hidden && $('pinIn').isConnected && people().some(c => c.id === picking))) renderPick();
   if (active === 'today') renderToday();
   if (active === 'ranks') renderRanks();
   if (active === 'history') renderHistory();
   if (active === 'coach') renderCoach();
+  if (active === 'practice') renderPractice();
 }
-$('tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; view = b.dataset.v; route(); window.scrollTo(0, 0); if (view === 'coach') refresh(); });
+$('tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; view = b.dataset.v; route(); window.scrollTo(0, 0); if (view === 'coach' || view === 'practice') refresh(); });
 window.addEventListener('hashchange', route);
+$('meAv').addEventListener('click', () => { meOpen = !meOpen; renderMeCard(); });
 
 let inflight = null;
 async function refresh() {
@@ -710,10 +1014,13 @@ async function refresh() {
     try {
       const st = await rpc('get_state', { p_token: token || null });
       skew = ms(st.now) - Date.now();
-      if (token && !st.me) { token = null; store.set('jdc-token', null); mountedKey = null; if (!watching()) setBanner('This phone was unlinked. Pick your name again.'); }
+      if (token && !st.me) { token = null; store.set('jdc-token', null); mountedKey = null; if (!watching()) setBanner('You were logged out on this phone. Tap your name and enter your PIN.'); }
       if (S && S.me !== st.me) mountedKey = null;
       S = st;
-      if (coachPass && (view === 'coach' || location.hash === '#coach')) {
+      if (coachPass && view === 'practice') {
+        try { PR = await rpc('coach_practices', { p_pass: coachPass }); } catch (e) { setBanner(e.message, true); }
+      }
+      if (coachPass && (view === 'coach' || view === 'practice' || location.hash === '#coach')) {
         try { C = await rpc('coach_state', { p_pass: coachPass }); }
         catch (e) { if (/passphrase/i.test(e.message)) { coachPass = null; C = null; store.set('jdc-coach', null); setBanner('Coach passphrase changed. Log in again.', true); } }
       }
