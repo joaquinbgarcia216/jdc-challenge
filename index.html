@@ -1,0 +1,732 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#121620">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Challenge HQ">
+<title>JDC Challenge HQ</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23121620'/%3E%3Crect x='7' y='7' width='5' height='5' fill='%23ff9d3c'/%3E%3Crect x='14' y='7' width='5' height='5' fill='%23e8ecf4'/%3E%3Crect x='14' y='14' width='5' height='5' fill='%23ff9d3c'/%3E%3Crect x='21' y='14' width='5' height='5' fill='%23e8ecf4'/%3E%3Crect x='7' y='21' width='5' height='5' fill='%23e8ecf4'/%3E%3Crect x='21' y='21' width='5' height='5' fill='%23ff9d3c'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Serif&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: phone-first app shell — header, one view at a time, tab bar fixed to the bottom. "Intercepted transmission" look, dark only. */
+:root {
+  --bg: #121620; --panel: #1b2130; --panel2: #232a3b; --line: #2c3447;
+  --ink: #e8ecf4; --muted: #8b95ab; --signal: #ff9d3c; --signal-dim: rgba(255,157,60,.16);
+  --ok: #5fd4a0; --ok-dim: rgba(95,212,160,.1); --bad: #ff6b6b;
+  --gold: #f5c84c; --silver: #c7d0de; --bronze: #d9925b; --fill: #f2f4f8;
+  --display: "Chakra Petch", "Arial Narrow", system-ui, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --verse: "IBM Plex Serif", Georgia, serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.4 var(--body); -webkit-tap-highlight-color: transparent; padding-top: env(safe-area-inset-top, 0px); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+.app { max-width: 560px; margin: 0 auto; padding-inline: 16px; padding-block: 18px 110px; display: flex; flex-direction: column; gap: 16px; }
+.eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--signal); display: flex; align-items: center; gap: 8px; }
+.eyebrow::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--signal); box-shadow: 0 0 0 4px var(--signal-dim); animation: blink 1.6s ease-in-out infinite; }
+@keyframes blink { 50% { opacity: .35; } }
+h1 { font-family: var(--display); font-weight: 700; font-size: 28px; line-height: 1.05; margin: 2px 0 0; }
+h2 { font-family: var(--display); font-weight: 700; font-size: 20px; margin: 0; text-wrap: balance; }
+h3 { font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: 0; font-weight: 500; }
+p { margin: 0; }
+.sub { color: var(--muted); font-size: 14px; line-height: 1.5; }
+.stack { display: flex; flex-direction: column; gap: 12px; }
+.row { display: flex; align-items: center; gap: 10px; }
+.between { justify-content: space-between; }
+.wrap { flex-wrap: wrap; }
+.banner { font-size: 13px; line-height: 1.45; border: 1px dashed var(--signal); background: var(--signal-dim); border-radius: 10px; padding: 10px 12px; }
+.banner.err { border-color: var(--bad); background: rgba(255,107,107,.1); }
+.chip { display: inline-flex; align-items: center; font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.chip.live { color: var(--signal); border-color: var(--signal); }
+.chip.done { color: var(--ok); border-color: var(--ok); }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.legend { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.empty { color: var(--muted); font-size: 14px; padding: 6px 0; }
+button { font: inherit; color: inherit; }
+button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.btn { border: 1px solid var(--line); background: var(--bg); color: var(--ink); font-weight: 600; font-size: 14px; padding: 11px 14px; border-radius: 10px; cursor: pointer; }
+.btn.primary { background: var(--signal); border-color: var(--signal); color: #1a1206; font-family: var(--display); font-size: 16px; }
+.btn.small { padding: 6px 10px; font-size: 12px; border-radius: 8px; }
+.btn.danger { color: var(--bad); }
+.btn:disabled { opacity: .4; cursor: default; }
+input[type=text], input[type=password], textarea { width: 100%; background: var(--bg); border: 1px solid var(--line); color: var(--ink); font: 16px var(--mono); padding: 12px; border-radius: 10px; }
+textarea { min-height: 90px; font-size: 13px; resize: vertical; }
+
+.tab-bar { position: fixed; left: 0; right: 0; bottom: 0; background: rgba(18,22,32,.95); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-top: 1px solid var(--line); padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px)); z-index: 5; }
+.tabs { max-width: 560px; margin: 0 auto; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; }
+.tabs button { background: none; border: 0; color: var(--muted); font-family: var(--display); font-weight: 700; font-size: 14px; letter-spacing: .04em; padding: 10px 4px; border-radius: 8px; cursor: pointer; }
+.tabs button[aria-current="page"] { color: var(--signal); background: var(--signal-dim); }
+
+/* picker */
+.names { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.names button { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 12px; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.names button b { font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+.names button span { font-family: var(--mono); font-size: 11px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+.names button:disabled { opacity: .45; cursor: default; }
+.names button[aria-pressed="true"] { border-color: var(--signal); background: var(--signal-dim); }
+
+/* standings */
+.list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.list li { display: grid; grid-template-columns: 26px 30px 1fr auto; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); min-width: 0; }
+.list li:last-child { border-bottom: 0; }
+.list li.empty { display: block; }
+.rank { font-family: var(--mono); font-weight: 700; font-size: 15px; text-align: center; color: var(--muted); }
+.r1 .rank { color: var(--gold); } .r2 .rank { color: var(--silver); } .r3 .rank { color: var(--bronze); }
+.av { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font: 700 13px var(--display); color: #121620; flex: none; }
+.who { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.who b { font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.who span { font-family: var(--mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.pts { font-family: var(--mono); font-weight: 700; font-size: 16px; text-align: right; font-variant-numeric: tabular-nums; }
+.pts small { display: block; font-size: 10px; letter-spacing: .1em; color: var(--muted); font-weight: 500; }
+.me b::after { content: " · you"; color: var(--signal); font-weight: 500; font-size: 12px; }
+.podium { display: grid; grid-template-columns: repeat(3, 1fr); align-items: end; gap: 8px; }
+.pod { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
+.pod .av { width: 42px; height: 42px; font-size: 16px; }
+.pod b { font-size: 13px; font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.step { width: 100%; border-radius: 8px 8px 0 0; display: flex; flex-direction: column; align-items: center; padding-top: 8px; font: 700 16px var(--mono); color: #1a1206; }
+.step span { font-size: 11px; font-weight: 500; }
+.p1 .step { height: 84px; background: var(--gold); } .p2 .step { height: 62px; background: var(--silver); } .p3 .step { height: 46px; background: var(--bronze); }
+
+/* history */
+.hist { display: flex; flex-direction: column; gap: 10px; }
+.hist details { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+.hist summary { list-style: none; padding: 14px; cursor: pointer; display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; align-items: center; }
+.hist summary::-webkit-details-marker { display: none; }
+.hist summary .t { font-weight: 600; font-size: 15px; min-width: 0; }
+.hist summary .m { font-family: var(--mono); font-size: 12px; color: var(--muted); grid-column: 1 / -1; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.hist .body { padding: 0 14px 12px; }
+
+/* coach */
+.seg { display: inline-grid; grid-auto-flow: column; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 2px; }
+.seg button { border: 0; background: none; color: var(--muted); font: 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; padding: 7px 9px; border-radius: 6px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--signal); color: #1a1206; }
+.prow { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.prow:last-child { border-bottom: 0; }
+.pname { background: none; border: 0; padding: 4px 0; text-align: left; cursor: pointer; font-weight: 600; font-size: 15px; min-width: 0; flex: 1 1 160px; }
+.pname.sel { color: var(--signal); }
+.pname small { display: block; font: 11px var(--mono); color: var(--muted); font-weight: 500; margin-top: 2px; }
+.tablewrap { overflow-x: auto; }
+.prog { width: 100%; border-collapse: collapse; font-size: 13px; }
+.prog th { text-align: left; font: 500 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); padding: 0 8px 6px 0; white-space: nowrap; }
+.prog td { padding: 8px 8px 8px 0; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; vertical-align: top; }
+.prog td.num { font-family: var(--mono); white-space: nowrap; }
+.prog .tries { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.st-ok { color: var(--ok); } .st-wip { color: var(--signal); } .st-no { color: var(--muted); }
+.secret { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+/* riddle */
+.verse { font-family: var(--verse); font-size: 18px; line-height: 1.6; white-space: pre-line; border-left: 3px solid var(--signal); padding-left: 14px; }
+.ask { font-weight: 600; font-size: 15px; }
+form.ans { display: flex; gap: 8px; }
+form.ans input { flex: 1; min-width: 0; font-size: 19px; }
+form.ans input:disabled { opacity: .5; }
+.msg { min-height: 18px; font-size: 14px; }
+.msg.bad { color: var(--bad); } .msg.wait { color: var(--muted); font-family: var(--mono); font-size: 13px; }
+.shake { animation: shake .35s; }
+@keyframes shake { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
+.hintbtn { background: transparent; border: 1px dashed var(--line); color: var(--muted); font-size: 13px; padding: 7px 11px; border-radius: 8px; cursor: pointer; }
+.hintbtn:not(:disabled) { color: var(--signal); border-color: var(--signal); }
+.hint { font-size: 14px; background: var(--signal-dim); border-radius: 8px; padding: 10px 12px; }
+.tries { display: flex; flex-wrap: wrap; gap: 6px; }
+.tries span { font: 12px var(--mono); color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; text-decoration: line-through; text-decoration-color: var(--bad); }
+.meta { display: flex; justify-content: space-between; align-items: center; gap: 10px; font: 13px var(--mono); color: var(--muted); flex-wrap: wrap; }
+.meta b { color: var(--ink); font-weight: 500; }
+.win { border: 1px solid var(--ok); background: var(--ok-dim); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 6px; }
+.win h2 { color: var(--ok); }
+.win .stamp { font: 12px var(--mono); color: var(--muted); }
+
+/* nonogram */
+.board-wrap { overflow-x: auto; }
+.board { display: grid; margin: 0 auto; width: max-content; user-select: none; -webkit-user-select: none; touch-action: none; }
+.colclue, .rowclue { font-family: var(--mono); font-weight: 700; font-variant-numeric: tabular-nums; transition: opacity .2s, color .2s; }
+.colclue { display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 2px; padding-bottom: 5px; }
+.rowclue { display: flex; justify-content: flex-end; align-items: center; gap: 5px; padding-right: 7px; }
+.done { color: var(--muted); opacity: .45; } .hl { color: var(--signal); opacity: 1; }
+.cell { background: var(--panel2); border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); position: relative; cursor: pointer; }
+.cell.f { background: var(--fill); }
+.cell.x::before, .cell.x::after { content: ""; position: absolute; left: 22%; right: 22%; top: 50%; height: 2px; background: var(--muted); }
+.cell.x::before { transform: rotate(45deg); } .cell.x::after { transform: rotate(-45deg); }
+.cell.gx { border-right: 2px solid var(--muted); } .cell.gy { border-bottom: 2px solid var(--muted); }
+.cell.top { border-top: 1px solid var(--line); } .cell.left { border-left: 1px solid var(--line); }
+.board.solved .cell { cursor: default; } .board.solved .cell.f { background: var(--ok); }
+.ntools { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.ntools button { border: 1px solid var(--line); background: var(--bg); font-size: 13px; font-weight: 600; padding: 10px 4px; border-radius: 8px; cursor: pointer; }
+.ntools button[aria-pressed="true"] { background: var(--signal); color: #1a1206; border-color: var(--signal); }
+.ntools button:disabled { opacity: .4; }
+@media (prefers-reduced-motion: reduce) { .eyebrow::before, .shake { animation: none; } * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="row between">
+    <div>
+      <div class="eyebrow">JDC West · Challenge 2027</div>
+      <h1>Challenge HQ</h1>
+    </div>
+    <div class="av" id="meAv" hidden style="width:36px;height:36px"></div>
+  </header>
+  <p class="banner" id="banner" hidden></p>
+  <section id="v-pick" class="stack" hidden></section>
+  <section id="v-today" class="stack" hidden></section>
+  <section id="v-ranks" class="stack" hidden></section>
+  <section id="v-history" class="stack" hidden></section>
+  <section id="v-coach" class="stack" hidden></section>
+</div>
+<nav class="tab-bar" id="tabbar" hidden aria-label="Sections"><div class="tabs" id="tabs">
+  <button data-v="today">Today</button>
+  <button data-v="ranks">Rankings</button>
+  <button data-v="history">History</button>
+  <button data-v="coach" id="coachTab" hidden>Coach</button>
+</div></nav>
+
+<script>
+(() => {
+'use strict';
+/* ---------- config ---------- */
+const SUPABASE_URL = 'https://clfuspmdwoysfdprzxbf.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNsZnVzcG1kd295c2ZkcHJ6eGJmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE1MzE5NzUsImV4cCI6MjEwNzEwNzk3NX0._zo-LQe35PWwIAX4IzPk9fkS0QB0QIDw4jWDAV7tHso';
+const RANK_PTS = [5, 3, 2, 1];   // 1st..4th on each puzzle
+const FINISH_PTS = 1;            // any later solve
+const POLL_MS = 12000;
+const TYPE_LABEL = { nonogram: 'Nonogram', riddle: 'Riddle' };
+const AV_COLORS = ['#ff9d3c', '#5fd4a0', '#7fb2ff', '#f5c84c', '#ff7eb6', '#b59cff', '#5fd0e0', '#d9925b'];
+
+/* ---------- tiny helpers ---------- */
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} },
+};
+const ms = t => t ? Date.parse(t) : null;
+const fmtDur = d => { if (d == null || d < 0) return '—'; const s = Math.round(d / 1000); if (s < 60) return s + 's'; const m = Math.floor(s / 60); if (m < 60) return `${m}m ${String(s % 60).padStart(2, '0')}s`; return `${Math.floor(m / 60)}h ${m % 60}m`; };
+const fmtWhen = t => t ? new Date(t).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+const ordinal = n => { const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); };
+const colorFor = id => { let h = 0; for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return AV_COLORS[h % AV_COLORS.length]; };
+function avatar(person, cls) { const d = el('div', 'av' + (cls ? ' ' + cls : ''), (person.name || '?').trim()[0].toUpperCase()); d.style.background = colorFor(person.id); d.setAttribute('aria-hidden', 'true'); return d; }
+
+async function rpc(fn, args = {}) {
+  let res;
+  try {
+    res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify(args),
+    });
+  } catch (e) { throw new Error('Can’t reach the server. Check your connection.'); }
+  const text = await res.text();
+  let body = null; try { body = text ? JSON.parse(text) : null; } catch (e) {}
+  if (!res.ok) throw new Error((body && body.message) || `Server error (${res.status}).`);
+  return body;
+}
+
+/* ---------- state ---------- */
+let token = store.get('jdc-token');
+let coachPass = store.get('jdc-coach');
+let S = null;            // get_state()
+let C = null;            // coach_state()
+let skew = 0;            // server now - local now
+let view = coachPass && store.get('jdc-watch') === '1' ? 'coach' : 'today', mountedKey = null, coachPick = null, picking = null;
+let bannerMsg = '', bannerErr = false;
+
+const people = () => S ? S.challengers : [];
+const nameOf = id => (people().find(c => c.id === id) || (C && C.challengers.find(c => c.id === id)) || { name: 'Former challenger' }).name;
+const personOf = id => ({ id, name: nameOf(id), isMe: S && id === S.me });
+const released = () => (S ? S.puzzles : []).filter(p => p.status !== 'draft').sort((a, b) => (ms(b.released_at) || 0) - (ms(a.released_at) || 0));
+const livePuzzles = () => released().filter(p => p.status === 'live');
+const mineFor = pid => (S && S.mine.find(m => m.puzzle_id === pid)) || null;
+const resultFor = (pid, cid, src) => (src || S.results).find(r => r.puzzle_id === pid && r.challenger_id === cid) || null;
+const serverNow = () => Date.now() + skew;
+
+/* ---------- scoring ---------- */
+function standings(pid, src) {
+  const rows = (src || S.results).filter(r => r.puzzle_id === pid);
+  const solved = rows.filter(r => r.solved_at).sort((a, b) => ms(a.solved_at) - ms(b.solved_at))
+    .map((r, i) => ({ r, id: r.challenger_id, place: i + 1, pts: i < RANK_PTS.length ? RANK_PTS[i] : FINISH_PTS }));
+  const trying = rows.filter(r => !r.solved_at).sort((a, b) => b.attempts - a.attempts).map(r => ({ r, id: r.challenger_id }));
+  return { solved, trying };
+}
+function overall() {
+  const t = {};
+  people().forEach(c => t[c.id] = { id: c.id, pts: 0, wins: 0, podiums: 0, solved: 0 });
+  released().forEach(p => standings(p.id).solved.forEach(x => {
+    const r = t[x.id] || (t[x.id] = { id: x.id, pts: 0, wins: 0, podiums: 0, solved: 0 });
+    r.pts += x.pts; r.solved++; if (x.place === 1) r.wins++; if (x.place <= 3) r.podiums++;
+  }));
+  return Object.values(t).sort((a, b) => b.pts - a.pts || b.wins - a.wins || b.solved - a.solved || nameOf(a.id).localeCompare(nameOf(b.id)));
+}
+
+/* ---------- shared bits ---------- */
+function personRow(rank, p, line, ptsText, ptsLabel) {
+  const li = el('li', rank && rank <= 3 ? 'r' + rank : '');
+  if (p.isMe) li.classList.add('me');
+  li.appendChild(el('span', 'rank', rank ? String(rank) : '·'));
+  li.appendChild(avatar(p));
+  const who = el('div', 'who'); who.append(el('b', null, p.name), el('span', null, line)); li.appendChild(who);
+  const pts = el('div', 'pts', ptsText); if (ptsLabel) pts.appendChild(el('small', null, ptsLabel)); li.appendChild(pts);
+  return li;
+}
+function standingsList(p, showTrying) {
+  const { solved, trying } = standings(p.id);
+  const ul = el('ul', 'list');
+  solved.forEach(x => {
+    const bits = ['took ' + fmtDur(ms(x.r.solved_at) - ms(x.r.opened_at))];
+    if (p.type === 'riddle') bits.push(`${x.r.attempts + 1} ${x.r.attempts ? 'tries' : 'try'}`);
+    if (x.r.hint_used) bits.push('hint');
+    ul.appendChild(personRow(x.place, personOf(x.id), bits.join(' · '), '+' + x.pts, 'PTS'));
+  });
+  if (showTrying) trying.forEach(x => ul.appendChild(personRow(null, personOf(x.id), p.type === 'riddle' ? `working · ${x.r.attempts} wrong` : 'working on it', '', '')));
+  if (!ul.children.length) ul.appendChild(el('li', 'empty', 'Nobody has solved this one yet.'));
+  return ul;
+}
+const chipFor = p => el('span', 'chip' + (p.status === 'live' ? ' live' : ''), (TYPE_LABEL[p.type] || p.type) + (p.status === 'live' ? ' · live' : p.status === 'draft' ? ' · draft' : ''));
+function setBanner(msg, err) { bannerMsg = msg || ''; bannerErr = !!err; $('banner').textContent = bannerMsg; $('banner').hidden = !bannerMsg; $('banner').classList.toggle('err', bannerErr); }
+
+/* ---------- name picker ---------- */
+function renderPick() {
+  const v = $('v-pick'); v.replaceChildren();
+  v.append(el('h2', null, 'Who’s playing?'), el('p', 'sub', 'Tap your name once. This phone remembers you after that.'));
+  const list = people();
+  if (!list.length) { v.appendChild(el('p', 'empty', 'The team list is empty. Ask Joaquin to add you.')); }
+  const grid = el('div', 'names');
+  list.forEach(c => {
+    const b = el('button'); b.type = 'button'; b.disabled = c.claimed; b.setAttribute('aria-pressed', String(picking === c.id));
+    b.append(el('b', null, c.name), el('span', null, c.claimed ? 'Taken' : picking === c.id ? 'Selected' : 'Tap to pick'));
+    b.onclick = () => { picking = c.id; renderPick(); };
+    grid.appendChild(b);
+  });
+  v.appendChild(grid);
+  if (picking) {
+    const c = list.find(x => x.id === picking);
+    const card = el('div', 'card');
+    card.append(el('p', null, `Link this phone to ${c ? c.name : 'this name'}? To switch names later, you’ll need to ask Joaquin.`));
+    const r = el('div', 'row');
+    const yes = el('button', 'btn primary', 'That’s me'); yes.type = 'button';
+    const no = el('button', 'btn', 'Cancel'); no.type = 'button';
+    no.onclick = () => { picking = null; renderPick(); };
+    yes.onclick = async () => {
+      yes.disabled = true;
+      try { token = await rpc('claim', { p_challenger: picking }); store.set('jdc-token', token); picking = null; setBanner(''); await refresh(); }
+      catch (e) { setBanner(e.message, true); yes.disabled = false; picking = null; await refresh(); }
+    };
+    r.append(yes, no); card.appendChild(r); v.appendChild(card);
+  }
+  if (coachPass) { const w = el('button', 'btn small', 'Just watching (coach)'); w.type = 'button'; w.onclick = () => { store.set('jdc-watch', '1'); route(); }; v.appendChild(w); }
+}
+
+/* ---------- today ---------- */
+function renderToday() {
+  const v = $('v-today');
+  const p = livePuzzles()[0];
+  if (!p) {
+    mountedKey = null;
+    v.replaceChildren(el('h2', null, 'No puzzle live right now'), el('p', 'sub', 'The next one drops in the group chat. Check Rankings to see where you stand.'));
+    return;
+  }
+  const key = p.id + ':' + (S.me || 'watch');
+  if (mountedKey !== key) {
+    mountedKey = key; v.replaceChildren();
+    const head = el('div', 'stack');
+    const r = el('div', 'row wrap'); r.append(chipFor(p), el('span', 'legend', 'Dropped ' + fmtWhen(ms(p.released_at)))); head.appendChild(r);
+    head.appendChild(el('h2', null, p.title)); v.appendChild(head);
+    if (livePuzzles().length > 1) v.appendChild(el('p', 'legend', `${livePuzzles().length - 1} more live in History`));
+    const card = el('div', 'card'); card.id = 'player'; v.appendChild(card);
+    if (!S.me) card.appendChild(el('p', 'sub', 'Coach view: you can try the puzzle, but nothing is recorded.'));
+    if (p.type === 'nonogram') mountNonogram(card, p); else mountRiddle(card, p);
+    const side = el('div', 'card'); side.id = 'todaySide'; v.appendChild(side);
+    if (S.me) rpc('open_puzzle', { p_token: token, p_puzzle: p.id }).then(refresh).catch(() => {});
+  }
+  const side = $('todaySide');
+  const { solved, trying } = standings(p.id);
+  const head = el('div', 'row between'); head.append(el('h3', null, 'Solve order'), el('span', 'legend', `${solved.length} solved · ${trying.length} working`));
+  side.replaceChildren(head, standingsList(p, true));
+  const pl = $('player'); if (pl && pl._sync) pl._sync();
+}
+
+/* ---------- rankings ---------- */
+function renderRanks() {
+  const v = $('v-ranks'); v.replaceChildren(el('h2', null, 'Season rankings'));
+  v.appendChild(el('p', 'legend', `1st ${RANK_PTS[0]} · 2nd ${RANK_PTS[1]} · 3rd ${RANK_PTS[2]} · 4th ${RANK_PTS[3]} · any other solve ${FINISH_PTS}`));
+  const t = overall();
+  if (!t.length || !t[0].pts) { v.appendChild(el('p', 'empty', 'Rankings start once someone solves a puzzle.')); return; }
+  const pod = el('div', 'podium');
+  [1, 0, 2].forEach(i => {
+    const x = t[i], d = el('div', 'pod p' + (i + 1));
+    if (x && x.pts) { const p = personOf(x.id); const s = el('div', 'step', String(x.pts)); s.appendChild(el('span', null, 'pts')); d.append(avatar(p), el('b', null, p.name), s); }
+    pod.appendChild(d);
+  });
+  v.appendChild(pod);
+  const card = el('div', 'card'), ul = el('ul', 'list');
+  t.forEach((x, i) => ul.appendChild(personRow(i + 1, personOf(x.id), `${x.solved} solved · ${x.wins} ${x.wins === 1 ? 'win' : 'wins'} · ${x.podiums} podium`, String(x.pts), 'PTS')));
+  card.appendChild(ul); v.appendChild(card);
+}
+
+/* ---------- history ---------- */
+function renderHistory() {
+  const v = $('v-history');
+  const open = new Set([...v.querySelectorAll('details[open]')].map(d => d.dataset.id));
+  const list = released();
+  v.replaceChildren(el('h2', null, 'Puzzle history'));
+  const counts = {}; list.forEach(p => counts[p.type] = (counts[p.type] || 0) + 1);
+  v.appendChild(el('p', 'legend', list.length ? `${list.length} puzzles · ` + Object.entries(counts).map(([k, n]) => `${n} ${(TYPE_LABEL[k] || k).toLowerCase()}${n > 1 ? 's' : ''}`).join(' · ') : 'Nothing released yet.'));
+  const wrap = el('div', 'hist');
+  list.forEach(p => {
+    const s = standings(p.id), d = el('details'); d.dataset.id = p.id; if (open.has(p.id)) d.open = true;
+    const sum = el('summary'); sum.appendChild(el('span', 't', p.title));
+    const mine = S.me && resultFor(p.id, S.me);
+    const me = mine && mine.solved_at ? s.solved.find(x => x.id === S.me) : null;
+    sum.appendChild(el('span', 'chip' + (me ? ' done' : ''), me ? ordinal(me.place) : mine ? 'unsolved' : '—'));
+    const m = el('span', 'm'); m.append(chipFor(p), el('span', null, fmtWhen(ms(p.released_at))), el('span', null, `${s.solved.length} solved`));
+    if (s.solved[0]) m.appendChild(el('span', null, 'winner ' + nameOf(s.solved[0].id)));
+    sum.appendChild(m); d.appendChild(sum);
+    const body = el('div', 'body'); body.appendChild(standingsList(p, p.status === 'live')); d.appendChild(body);
+    wrap.appendChild(d);
+  });
+  v.appendChild(wrap);
+}
+
+/* ---------- coach ---------- */
+function confirmButton(label, sure, fn, cls) {
+  const b = el('button', 'btn small ' + (cls || ''), label); b.type = 'button'; let armed = false, t;
+  b.onclick = async () => {
+    if (!armed) { armed = true; b.textContent = sure; t = setTimeout(() => { armed = false; b.textContent = label; }, 2500); return; }
+    clearTimeout(t); b.disabled = true; try { await fn(); } catch (e) { setBanner(e.message, true); } b.disabled = false; armed = false; b.textContent = label;
+  };
+  return b;
+}
+async function coachDo(fn, args) { await rpc(fn, Object.assign({ p_pass: coachPass }, args)); await refresh(); }
+
+function renderCoachLogin() {
+  const v = $('v-coach'); v.replaceChildren(el('h2', null, 'Coach login'));
+  const f = el('form', 'card'); f.autocomplete = 'off';
+  const inp = el('input'); inp.type = 'password'; inp.id = 'coachPass'; inp.placeholder = 'Coach passphrase'; inp.setAttribute('aria-label', 'Coach passphrase');
+  const b = el('button', 'btn primary', 'Log in'); b.type = 'submit';
+  const msg = el('p', 'msg');
+  f.append(el('p', 'sub', 'Only for Joaquin. This phone will stay logged in.'), inp, b, msg);
+  f.onsubmit = async e => {
+    e.preventDefault(); b.disabled = true;
+    try { if (await rpc('coach_check', { p_pass: inp.value.trim() })) { coachPass = inp.value.trim(); store.set('jdc-coach', coachPass); if (!token) store.set('jdc-watch', '1'); history.replaceState(null, '', location.pathname); await refresh(); view = 'coach'; route(); } else { msg.className = 'msg bad'; msg.textContent = 'That passphrase is wrong.'; } }
+    catch (err) { msg.className = 'msg bad'; msg.textContent = err.message; }
+    b.disabled = false;
+  };
+  v.appendChild(f);
+}
+
+function renderCoach() {
+  const v = $('v-coach');
+  if (!coachPass) return renderCoachLogin();
+  if (!C) { v.replaceChildren(el('p', 'sub', 'Loading coach data…')); return; }
+  const prevCode = ($('codeIn') || {}).value || '', prevName = ($('nameIn') || {}).value || '';
+  v.replaceChildren(el('h2', null, 'Coach view'));
+
+  // puzzles
+  const all = [...C.puzzles];
+  if (!coachPick || !all.find(p => p.id === coachPick)) coachPick = ((all.find(p => p.status === 'live')) || all[0] || {}).id;
+  const pc = el('div', 'card'); pc.appendChild(el('h3', null, 'Puzzles'));
+  if (!all.length) pc.appendChild(el('p', 'empty', 'No puzzles yet. Paste a puzzle code below.'));
+  all.forEach(p => {
+    const r = el('div', 'prow');
+    const n = el('button', 'pname' + (p.id === coachPick ? ' sel' : '')); n.type = 'button';
+    n.append(p.title, el('small', null, `${TYPE_LABEL[p.type] || p.type}${p.released_at ? ' · ' + fmtWhen(ms(p.released_at)) : ''}`));
+    n.onclick = () => { coachPick = p.id; renderCoach(); };
+    const seg = el('div', 'seg');
+    ['draft', 'live', 'closed'].forEach(s => { const b = el('button', null, s); b.type = 'button'; b.setAttribute('aria-pressed', String(p.status === s)); b.onclick = () => coachDo('coach_set_status', { p_puzzle: p.id, p_status: s }).catch(e => setBanner(e.message, true)); seg.appendChild(b); });
+    r.append(n, seg); pc.appendChild(r);
+  });
+  v.appendChild(pc);
+
+  // progress for the selected puzzle
+  const p = all.find(x => x.id === coachPick);
+  if (p) {
+    const { solved, trying } = standings(p.id, C.results);
+    const card = el('div', 'card');
+    const h = el('div', 'row between wrap'); h.append(el('h3', null, 'Progress · ' + p.title), el('span', 'legend', `${solved.length}/${C.challengers.length} solved`));
+    card.appendChild(h);
+    if (p.type === 'riddle') card.appendChild(el('p', 'secret', `Accepts: ${(p.answers || []).join(', ') || '—'}${p.hint ? ' · Hint: ' + p.hint : ''}`));
+    const tw = el('div', 'tablewrap'), tb = el('table', 'prog');
+    const thead = el('thead'), hr = el('tr'); ['#', 'Challenger', 'Status', 'Wrong', 'Time'].forEach(t => hr.appendChild(el('th', null, t))); thead.appendChild(hr); tb.appendChild(thead);
+    const body = el('tbody');
+    const seen = new Set([...solved, ...trying].map(x => x.id));
+    const rows = [...solved, ...trying, ...C.challengers.filter(c => !seen.has(c.id)).map(c => ({ id: c.id, r: null }))];
+    rows.forEach(x => {
+      const tr = el('tr');
+      tr.appendChild(el('td', 'num', x.place ? String(x.place) : ''));
+      const nt = el('td'); nt.appendChild(document.createTextNode(nameOf(x.id)));
+      if (x.r && x.r.tries && x.r.tries.length) nt.appendChild(el('div', 'tries', x.r.tries.slice(-5).join(' · ')));
+      tr.appendChild(nt);
+      tr.appendChild(el('td', x.r ? (x.r.solved_at ? 'st-ok' : 'st-wip') : 'st-no', x.r ? (x.r.solved_at ? 'Solved' + (x.r.hint_used ? ' (hint)' : '') : 'Working' + (x.r.hint_used ? ' (hint)' : '')) : 'Not opened'));
+      tr.appendChild(el('td', 'num', x.r && p.type === 'riddle' ? String(x.r.attempts) : '—'));
+      tr.appendChild(el('td', 'num', x.r && x.r.solved_at ? fmtDur(ms(x.r.solved_at) - ms(x.r.opened_at)) : '—'));
+      body.appendChild(tr);
+    });
+    tb.appendChild(body); tw.appendChild(tb); card.appendChild(tw);
+    if (p.status === 'draft') { const r = el('div', 'row'); r.appendChild(confirmButton('Delete draft', 'Tap again to delete', () => coachDo('coach_delete_puzzle', { p_puzzle: p.id }), 'danger')); card.appendChild(r); }
+    v.appendChild(card);
+  }
+
+  // add puzzle
+  const add = el('div', 'card'); add.append(el('h3', null, 'Add a puzzle'), el('p', 'sub', 'Paste a puzzle code from Claude. It arrives as a draft, so nobody sees it until you set it live.'));
+  const ta = el('textarea'); ta.id = 'codeIn'; ta.placeholder = 'JDC1.…'; ta.value = prevCode; ta.setAttribute('aria-label', 'Puzzle code');
+  const ab = el('button', 'btn primary', 'Add puzzle'); ab.type = 'button';
+  const am = el('p', 'msg');
+  ab.onclick = async () => {
+    let def;
+    try { def = decodeCode(ta.value); } catch (e) { am.className = 'msg bad'; am.textContent = 'That code didn’t read correctly. Copy the whole thing, including “JDC1.”.'; return; }
+    ab.disabled = true;
+    try { await coachDo('coach_add_puzzle', { p_def: def }); ta.value = ''; coachPick = def.id; am.className = 'msg'; am.textContent = `Added “${def.title}” as a draft.`; }
+    catch (e) { am.className = 'msg bad'; am.textContent = e.message; }
+    ab.disabled = false;
+  };
+  add.append(ta, ab, am); v.appendChild(add);
+
+  // team
+  const team = el('div', 'card'); team.appendChild(el('h3', null, 'Team'));
+  C.challengers.forEach(c => {
+    const r = el('div', 'prow');
+    const info = el('div', 'who'); info.append(el('b', null, c.name), el('span', null, c.claimed ? 'Linked ' + fmtWhen(ms(c.claimed_at)) : 'Not linked yet'));
+    const acts = el('div', 'row');
+    if (c.claimed) acts.appendChild(confirmButton('Unlink phone', 'Tap again', () => coachDo('coach_reset_claim', { p_challenger: c.id })));
+    acts.appendChild(confirmButton('Remove', 'Removes results too', () => coachDo('coach_remove_challenger', { p_challenger: c.id }), 'danger'));
+    r.append(info, acts); team.appendChild(r);
+  });
+  const af = el('form', 'row'); const ni = el('input'); ni.type = 'text'; ni.id = 'nameIn'; ni.placeholder = 'Add a challenger'; ni.value = prevName; ni.setAttribute('aria-label', 'New challenger name');
+  const nb = el('button', 'btn', 'Add'); nb.type = 'submit';
+  af.onsubmit = async e => { e.preventDefault(); if (!ni.value.trim()) return; nb.disabled = true; try { await coachDo('coach_add_challenger', { p_name: ni.value.trim() }); ni.value = ''; } catch (err) { setBanner(err.message, true); } nb.disabled = false; };
+  af.append(ni, nb); team.appendChild(af);
+  team.appendChild(el('p', 'legend', 'Unlink a phone when someone switches phones or picked the wrong name. They pick again next time they open the link.'));
+  v.appendChild(team);
+
+  const out = el('button', 'btn small', 'Log out of coach'); out.type = 'button';
+  out.onclick = () => { coachPass = null; C = null; store.set('jdc-coach', null); store.set('jdc-watch', null); view = 'today'; route(); };
+  v.appendChild(out);
+}
+function decodeCode(raw) {
+  const s = raw.trim().replace(/\s+/g, '');
+  const json = s.startsWith('JDC1.') ? new TextDecoder().decode(Uint8Array.from(atob(s.slice(5).replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0))) : s;
+  const def = JSON.parse(json);
+  if (!def.id || !def.title || !def.type) throw new Error('incomplete');
+  return def;
+}
+
+/* ---------- riddle ---------- */
+function mountRiddle(card, p) {
+  const P = p.config || {};
+  card.append(el('p', 'verse', P.verse || ''));
+  if (P.ask) card.append(el('p', 'ask', P.ask));
+  const form = el('form', 'ans'); form.autocomplete = 'off';
+  const inp = el('input'); inp.type = 'text'; inp.id = 'ans-' + p.id; inp.placeholder = P.placeholder || 'Your answer'; inp.setAttribute('aria-label', 'Your answer');
+  inp.setAttribute('autocapitalize', 'off'); inp.setAttribute('autocorrect', 'off'); inp.spellcheck = false;
+  if (P.numeric) { inp.inputMode = 'numeric'; inp.maxLength = 8; }
+  const go = el('button', 'btn primary', 'Submit'); go.type = 'submit';
+  form.append(inp, go);
+  const msg = el('p', 'msg'); msg.setAttribute('aria-live', 'polite');
+  const meta = el('div', 'meta'), cnt = el('span'), hb = el('button', 'hintbtn'); hb.type = 'button'; meta.append(cnt, hb);
+  const hint = el('p', 'hint'), tries = el('div', 'tries');
+  const win = el('div', 'win'), winTxt = el('p', 'sub'), stamp = el('span', 'stamp'); win.append(el('h2', null, 'Cracked it'), winTxt, stamp);
+  card.append(form, msg, meta, hint, tries, win);
+  let busy = false, lt;
+
+  function sync() {
+    const r = S.me ? resultFor(p.id, S.me) : null, m = mineFor(p.id);
+    const wrong = r ? r.attempts : 0, solved = r && r.solved_at;
+    cnt.replaceChildren('Wrong guesses ', el('b', null, String(wrong)));
+    const left = Math.max(0, (P.hintAfter || 0) - wrong);
+    hb.hidden = !p.has_hint || !S.me;
+    hb.disabled = left > 0 || (r && r.hint_used) || !!solved || busy;
+    hb.textContent = r && r.hint_used ? 'Hint used' : left > 0 ? `Hint unlocks after ${left} more` : 'Reveal hint';
+    hint.hidden = !(m && m.hint); hint.textContent = (m && m.hint) || '';
+    tries.replaceChildren(...((m && m.tries) || []).slice(-12).map(t => el('span', null, t)));
+    form.hidden = msg.hidden = !!solved; win.hidden = !solved;
+    if (solved) {
+      const me = standings(p.id).solved.find(x => x.id === S.me);
+      winTxt.textContent = me ? `You finished ${ordinal(me.place)} and earned ${me.pts} ${me.pts === 1 ? 'point' : 'points'}. Keep the answer to yourself.` : 'Solved. Keep the answer to yourself.';
+      stamp.textContent = `${wrong + 1} ${wrong ? 'attempts' : 'attempt'} · ${fmtDur(ms(r.solved_at) - ms(r.opened_at))} · ${r.hint_used ? 'hint used' : 'no hint'}`;
+    }
+    lock(m && ms(m.locked_until));
+  }
+  function lock(until) {
+    clearTimeout(lt);
+    const left = until ? until - serverNow() : 0, on = left > 0;
+    inp.disabled = go.disabled = on || busy || !S.me;
+    if (!S.me) return;
+    if (on) { msg.className = 'msg wait'; msg.textContent = `Too many guesses. Try again in ${Math.ceil(left / 1000)}s.`; lt = setTimeout(() => lock(until), 250); }
+    else if (msg.classList.contains('wait')) { msg.className = 'msg'; msg.textContent = ''; }
+  }
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const raw = inp.value.trim(); if (!raw || busy || !S.me) return;
+    busy = true; go.disabled = true;
+    try {
+      const res = await rpc('submit_riddle', { p_token: token, p_puzzle: p.id, p_guess: raw });
+      if (res.correct) { msg.textContent = ''; }
+      else if (res.empty) { msg.className = 'msg bad'; msg.textContent = 'Type an actual answer.'; }
+      else { msg.className = 'msg bad'; msg.textContent = 'Not it. Read it again.'; }
+      if (!res.correct && !res.empty) { inp.classList.remove('shake'); void inp.offsetWidth; inp.classList.add('shake'); inp.select(); }
+    } catch (err) { msg.className = 'msg bad'; msg.textContent = err.message; }
+    busy = false; await refresh();
+  });
+  hb.onclick = async () => {
+    busy = true; sync();
+    try { await rpc('use_hint', { p_token: token, p_puzzle: p.id }); } catch (e) { setBanner(e.message, true); }
+    busy = false; await refresh();
+  };
+  card._sync = sync; sync();
+}
+
+/* ---------- nonogram ---------- */
+function mountNonogram(card, p) {
+  const cfg = p.config || {}, ROWS = cfg.rows || [], COLS = cfg.cols || [], R = ROWS.length, C = COLS.length;
+  const LK = 'jdc-nono-' + p.id;
+  let grid = Array.from({ length: R }, () => Array(C).fill(0)), mode = 1, undo = [], sending = false, lastSent = '';
+  try { const s = JSON.parse(store.get(LK) || 'null'); if (s && s.grid && s.grid.length === R && s.grid[0].length === C) grid = s.grid; } catch (e) {}
+  const save = () => store.set(LK, JSON.stringify({ grid }));
+  const isSolved = () => { const r = S.me && resultFor(p.id, S.me); return !!(r && r.solved_at); };
+
+  if (cfg.brief) card.appendChild(el('p', 'sub', cfg.brief));
+  const prog = el('div', 'meta'); card.appendChild(prog);
+  const wrap = el('div', 'board-wrap'), board = el('div', 'board'); wrap.appendChild(board); card.appendChild(wrap);
+  const tools = el('div', 'ntools');
+  const bF = el('button', null, 'Fill'), bX = el('button', null, '✕ Empty'), bU = el('button', null, 'Undo'), bC = el('button', null, 'Clear');
+  [bF, bX, bU, bC].forEach(b => b.type = 'button');
+  tools.append(bF, bX, bU, bC); card.appendChild(tools);
+  const win = el('div', 'win'), winTxt = el('p', 'sub'), stamp = el('span', 'stamp'); win.append(el('h2', null, 'Transmission decoded'), winTxt, stamp); card.appendChild(win);
+
+  const cells = [], rowEls = [], colEls = [];
+  const maxR = Math.max(1, ...ROWS.map(r => r.length)), maxC = Math.max(1, ...COLS.map(c => c.length));
+  function build() {
+    const avail = Math.min(card.clientWidth || 340, 560) - 28 - maxR * 14 - 12;
+    const s = Math.max(20, Math.min(40, Math.floor(avail / Math.max(C, 1))));
+    board.replaceChildren();
+    board.style.gridTemplateColumns = `auto repeat(${C}, ${s}px)`;
+    board.style.gridTemplateRows = `auto repeat(${R}, ${s}px)`;
+    board.style.fontSize = Math.max(12, Math.min(15, s * .5)) + 'px';
+    board.appendChild(el('div'));
+    COLS.forEach((cl, c) => { const e = el('div', 'colclue'); cl.forEach(n => e.appendChild(el('span', null, String(n)))); board.appendChild(e); colEls[c] = e; });
+    ROWS.forEach((cl, r) => {
+      const e = el('div', 'rowclue'); cl.forEach(n => e.appendChild(el('span', null, String(n)))); board.appendChild(e); rowEls[r] = e; cells[r] = [];
+      for (let c = 0; c < C; c++) {
+        const d = el('div', 'cell' + ((c % 5 === 4 && c !== C - 1) ? ' gx' : '') + ((r % 5 === 4 && r !== R - 1) ? ' gy' : '') + (r === 0 ? ' top' : '') + (c === 0 ? ' left' : ''));
+        d.dataset.r = r; d.dataset.c = c; board.appendChild(d); cells[r][c] = d;
+      }
+    });
+    for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) paint(r, c);
+    check();
+  }
+  const runs = l => { const o = []; let n = 0; l.forEach(v => { if (v === 1) n++; else if (n) { o.push(n); n = 0; } }); if (n) o.push(n); return o.length ? o : [0]; };
+  const same = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+  function paint(r, c) { const v = grid[r][c], e = cells[r][c]; e.classList.toggle('f', v === 1); e.classList.toggle('x', v === 2); }
+  async function check() {
+    let n = 0;
+    for (let r = 0; r < R; r++) { const ok = same(runs(grid[r]), ROWS[r]); rowEls[r].classList.toggle('done', ok); n += ok; }
+    for (let c = 0; c < C; c++) { const ok = same(runs(grid.map(x => x[c])), COLS[c]); colEls[c].classList.toggle('done', ok); n += ok; }
+    prog.replaceChildren(el('span', null, `${n} / ${R + C} lines cleared`));
+    sync();
+    if (n === R + C && S.me && !isSolved() && !sending) {
+      const rows = grid.map(r => r.map(v => v === 1 ? '1' : '0').join(''));
+      const sig = rows.join('|'); if (sig === lastSent) return;
+      sending = true; lastSent = sig; prog.replaceChildren(el('span', null, 'Checking with the server…'));
+      try {
+        const res = await rpc('submit_nonogram', { p_token: token, p_puzzle: p.id, p_rows: rows });
+        if (res.correct) { for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) if (grid[r][c] === 2) { grid[r][c] = 0; paint(r, c); } save(); prog.replaceChildren(el('span', null, `${R + C} / ${R + C} lines cleared`)); }
+        else prog.replaceChildren(el('span', null, 'The server didn’t accept that grid. Double-check your clues.'));
+      } catch (e) { prog.replaceChildren(el('span', null, e.message)); lastSent = ''; }
+      sending = false; await refresh();
+    }
+  }
+  function sync() {
+    const solved = isSolved();
+    board.classList.toggle('solved', solved); tools.hidden = solved; win.hidden = !solved;
+    bF.setAttribute('aria-pressed', String(mode === 1)); bX.setAttribute('aria-pressed', String(mode === 2)); bU.disabled = !undo.length;
+    if (solved) {
+      const r = resultFor(p.id, S.me), me = standings(p.id).solved.find(x => x.id === S.me);
+      winTxt.textContent = (me ? `You finished ${ordinal(me.place)} and earned ${me.pts} ${me.pts === 1 ? 'point' : 'points'}. ` : 'Solved. ') + 'DM Joaquin the room number privately.';
+      stamp.textContent = 'Solved in ' + fmtDur(ms(r.solved_at) - ms(r.opened_at));
+    }
+  }
+  let drag = null;
+  const at = e => { const t = document.elementFromPoint(e.clientX, e.clientY); return t && t.classList.contains('cell') && board.contains(t) ? [+t.dataset.r, +t.dataset.c] : null; };
+  const cross = (r, c) => { rowEls.forEach((e, i) => e.classList.toggle('hl', i === r)); colEls.forEach((e, j) => e.classList.toggle('hl', j === c)); };
+  function apply(r, c) {
+    const k = r * C + c; if (drag.seen.has(k)) return; drag.seen.add(k);
+    if (grid[r][c] === drag.t) return;
+    if (drag.t !== 0 && grid[r][c] !== 0 && grid[r][c] !== drag.t) return;
+    drag.ch.push([r, c, grid[r][c]]); grid[r][c] = drag.t; paint(r, c);
+  }
+  board.addEventListener('pointerdown', e => { if (isSolved()) return; const q = at(e); if (!q) return; e.preventDefault(); drag = { t: grid[q[0]][q[1]] === mode ? 0 : mode, seen: new Set(), ch: [] }; apply(...q); cross(...q); });
+  window.addEventListener('pointermove', e => { if (!drag) return; const q = at(e); if (q) { apply(...q); cross(...q); } });
+  const end = () => { if (!drag) return; if (drag.ch.length) undo.push(drag.ch); drag = null; cross(-1, -1); save(); check(); };
+  window.addEventListener('pointerup', end); window.addEventListener('pointercancel', end);
+  bF.onclick = () => { mode = 1; sync(); }; bX.onclick = () => { mode = 2; sync(); };
+  bU.onclick = () => { const ch = undo.pop(); if (!ch) return; ch.forEach(([r, c, v]) => { grid[r][c] = v; paint(r, c); }); save(); check(); };
+  let armed = false;
+  bC.onclick = () => {
+    if (!armed) { armed = true; bC.textContent = 'Sure?'; setTimeout(() => { armed = false; bC.textContent = 'Clear'; }, 2500); return; }
+    armed = false; bC.textContent = 'Clear';
+    const ch = []; for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) if (grid[r][c]) { ch.push([r, c, grid[r][c]]); grid[r][c] = 0; paint(r, c); }
+    if (ch.length) undo.push(ch); save(); check();
+  };
+  card._sync = sync;
+  requestAnimationFrame(build);
+}
+
+/* ---------- shell ---------- */
+function watching() { return !!coachPass && store.get('jdc-watch') === '1'; }
+function route() {
+  const wantsCoach = location.hash === '#coach';
+  const needPick = S && !S.me && !watching() && !(wantsCoach && !coachPass);
+  const showLogin = wantsCoach && !coachPass;
+  $('coachTab').hidden = !coachPass;
+  const tabsOn = !!S && !needPick && !showLogin;
+  $('tabbar').hidden = !tabsOn;
+  if (showLogin) view = 'coach';
+  if (view === 'coach' && !coachPass && !showLogin) view = 'today';
+  const active = !S ? null : showLogin ? 'coach' : needPick ? 'pick' : view;
+  ['pick', 'today', 'ranks', 'history', 'coach'].forEach(k => $('v-' + k).hidden = k !== active);
+  $('tabs').querySelectorAll('button').forEach(b => b.setAttribute('aria-current', b.dataset.v === view ? 'page' : 'false'));
+  const me = S && S.me && people().find(c => c.id === S.me);
+  $('meAv').hidden = !me; if (me) { $('meAv').textContent = me.name[0].toUpperCase(); $('meAv').style.background = colorFor(me.id); $('meAv').title = me.name; }
+  if (!active) return;
+  if (active === 'pick') renderPick();
+  if (active === 'today') renderToday();
+  if (active === 'ranks') renderRanks();
+  if (active === 'history') renderHistory();
+  if (active === 'coach') renderCoach();
+}
+$('tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; view = b.dataset.v; route(); window.scrollTo(0, 0); if (view === 'coach') refresh(); });
+window.addEventListener('hashchange', route);
+
+let inflight = null;
+async function refresh() {
+  if (inflight) return inflight;
+  inflight = (async () => {
+    try {
+      const st = await rpc('get_state', { p_token: token || null });
+      skew = ms(st.now) - Date.now();
+      if (token && !st.me) { token = null; store.set('jdc-token', null); mountedKey = null; if (!watching()) setBanner('This phone was unlinked. Pick your name again.'); }
+      if (S && S.me !== st.me) mountedKey = null;
+      S = st;
+      if (coachPass && (view === 'coach' || location.hash === '#coach')) {
+        try { C = await rpc('coach_state', { p_pass: coachPass }); }
+        catch (e) { if (/passphrase/i.test(e.message)) { coachPass = null; C = null; store.set('jdc-coach', null); setBanner('Coach passphrase changed. Log in again.', true); } }
+      }
+      if (bannerErr && /reach the server/.test(bannerMsg)) setBanner('');
+    } catch (e) { setBanner(e.message, true); }
+    route();
+  })();
+  try { await inflight; } finally { inflight = null; }
+}
+setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, POLL_MS);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refresh(); });
+refresh();
+})();
+</script>
+</body>
+</html>
