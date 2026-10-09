@@ -161,6 +161,26 @@ form.ans input:disabled { opacity: .5; }
 .ntools button { border: 1px solid var(--line); background: var(--bg); font-size: 13px; font-weight: 600; padding: 10px 4px; border-radius: 8px; cursor: pointer; }
 .ntools button[aria-pressed="true"] { background: var(--signal); color: #1a1206; border-color: var(--signal); }
 .ntools button:disabled { opacity: .4; }
+/* sudoku */
+.sdk { display: grid; grid-template-columns: repeat(9, 1fr); width: 100%; max-width: 380px; margin: 0 auto; border: 2px solid var(--muted); border-radius: 6px; overflow: hidden; }
+.sc { aspect-ratio: 1; border: 0; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--panel2); color: var(--signal); font: 600 clamp(16px, 5vw, 22px) var(--mono); padding: 0; cursor: pointer; }
+.sc.bx { border-right: 2px solid var(--muted); } .sc.by { border-bottom: 2px solid var(--muted); }
+.sc.given { color: var(--ink); font-weight: 700; }
+.sc.peer { background: #283147; } .sc.same { background: rgba(255,157,60,.22); } .sc.sel { background: rgba(255,157,60,.4); }
+.sc.bad { color: var(--bad); } .sc.ok { background: rgba(95,212,160,.14); color: var(--ok); } .sc.ok.given { color: var(--ink); }
+.sdkpad { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; max-width: 380px; width: 100%; margin: 0 auto; }
+.sdkpad button { border: 1px solid var(--line); background: var(--bg); border-radius: 8px; font: 700 18px var(--mono); padding: 10px 0; cursor: pointer; }
+.sdkpad button.used { opacity: .3; }
+.sdkpad .wide { grid-column: span 4; font: 600 14px var(--body); }
+.sdkpad .erase { grid-column: span 5; }
+/* word search */
+.ws { display: grid; margin: 0 auto; width: max-content; user-select: none; -webkit-user-select: none; touch-action: none; }
+.wc { display: grid; place-items: center; font-family: var(--mono); font-weight: 700; border-radius: 6px; cursor: pointer; }
+.wc.path { background: rgba(255,157,60,.6) !important; color: #1a1206; }
+.wc.start { outline: 2px solid var(--signal); outline-offset: -2px; }
+.ws.solved .wc { cursor: default; }
+.wslist { display: flex; flex-wrap: wrap; gap: 6px 12px; font: 600 13px var(--mono); letter-spacing: .06em; }
+.wslist .got { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--ok); }
 /* practice */
 .ticks { display: flex; flex-direction: column; gap: 8px; }
 .tick { display: grid; grid-template-columns: 1fr 52px 96px; gap: 8px; align-items: stretch; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 8px; min-width: 0; }
@@ -217,7 +237,7 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const RANK_PTS = [5, 3, 2, 1];   // 1st..4th on each puzzle
 const FINISH_PTS = 1;            // any later solve
 const POLL_MS = 12000;
-const TYPE_LABEL = { nonogram: 'Nonogram', riddle: 'Riddle' };
+const TYPE_LABEL = { nonogram: 'Nonogram', riddle: 'Riddle', sudoku: 'Sudoku', wordsearch: 'Word search' };
 const AV_COLORS = ['#ff9d3c', '#5fd4a0', '#7fb2ff', '#f5c84c', '#ff7eb6', '#b59cff', '#5fd0e0', '#d9925b'];
 
 /* ---------- tiny helpers ---------- */
@@ -402,6 +422,7 @@ function renderAnnouncement() {
   const t = el('div', 'tally');
   [...a.people].sort((x, y) => y.ticks - x.ticks).forEach(x => { const n = el('span', null, nameOf(x.challenger_id)); if (S.me === x.challenger_id) n.style.color = 'var(--signal)'; t.append(n, el('b', null, x.ticks + (x.ticks === 1 ? ' tick' : ' ticks'))); });
   box.appendChild(t);
+  box.appendChild(el('p', 'legend', 'Saved in History, so you can check it later.'));
   const ok = el('button', 'btn small', 'Got it'); ok.type = 'button';
   ok.onclick = () => { store.set('jdc-seen-practice', a.id); renderAnnouncement(); };
   box.appendChild(ok);
@@ -427,7 +448,8 @@ function renderToday() {
     if (livePuzzles().length > 1) v.appendChild(el('p', 'legend', `${livePuzzles().length - 1} more live in History`));
     const card = el('div', 'card'); card.id = 'player'; v.appendChild(card);
     if (!S.me) card.appendChild(el('p', 'sub', 'Coach view: you can try the puzzle, but nothing is recorded.'));
-    if (p.type === 'nonogram') mountNonogram(card, p); else mountRiddle(card, p);
+    const mount = { nonogram: mountNonogram, riddle: mountRiddle, sudoku: mountSudoku, wordsearch: mountWordsearch }[p.type];
+    if (mount) mount(card, p); else card.appendChild(el('p', 'sub', 'This puzzle type needs an app update. Refresh the page, or tell Joaquin.'));
     const side = el('div', 'card'); side.id = 'todaySide'; v.appendChild(side);
     if (S.me) rpc('open_puzzle', { p_token: token, p_puzzle: p.id }).then(refresh).catch(() => {});
   }
@@ -479,6 +501,23 @@ function renderHistory() {
     wrap.appendChild(d);
   });
   v.appendChild(wrap);
+
+  const prs = (S && S.practices) || [];
+  if (prs.length) {
+    v.appendChild(el('h2', null, 'Practice results'));
+    const pw = el('div', 'hist');
+    prs.forEach((pr, i) => {
+      const d = el('details'); d.dataset.id = 'pr-' + pr.id; if (open.has('pr-' + pr.id) || i === 0) d.open = true;
+      const sum = el('summary'); sum.appendChild(el('span', 't', fmtWhen(ms(pr.ended_at))));
+      const mine = S.me && pr.people.find(x => x.challenger_id === S.me);
+      sum.appendChild(el('span', 'chip' + (mine && mine.ticks ? ' live' : ''), mine ? `${mine.ticks} ${mine.ticks === 1 ? 'tick' : 'ticks'}` : '—'));
+      const m = el('span', 'm'); m.appendChild(el('span', null, pr.punishment || 'No punishment set')); sum.appendChild(m);
+      d.appendChild(sum);
+      const body = el('div', 'body'); practiceTally(pr, body); d.appendChild(body);
+      pw.appendChild(d);
+    });
+    v.appendChild(pw);
+  }
 }
 
 /* ---------- coach ---------- */
@@ -687,6 +726,8 @@ function renderPreview(panel, p) {
   panel.append(head, el('h2', null, p.title));
   const body = el('div', 'stack'); panel.appendChild(body);
   if (p.type === 'nonogram') { store.set('jdc-nono-preview-' + p.id, null); mountNonogram(body, p, { preview: true }); }
+  else if (p.type === 'sudoku') mountSudoku(body, p, { preview: true });
+  else if (p.type === 'wordsearch') mountWordsearch(body, p, { preview: true });
   else if (p.type === 'riddle') {
     const cfg = p.config || {};
     if (cfg.brief) body.appendChild(el('p', 'sub', cfg.brief));
@@ -811,6 +852,156 @@ function renderPractice() {
     });
     v.appendChild(wrap);
   }
+}
+
+/* ---------- shared bits for grid puzzles ---------- */
+function solvedState(p, opts) { if (opts.preview) return false; const r = S && S.me && resultFor(p.id, S.me); return r && r.solved_at ? r : null; }
+function winCard(title) { const win = el('div', 'win'), txt = el('p', 'sub'), stamp = el('span', 'stamp'); win.append(el('h2', null, title), txt, stamp); return { win, txt, stamp }; }
+function fillWin(w, p, opts, previewDone) {
+  if (opts.preview) { w.txt.textContent = previewDone ? 'Preview: solved. Nothing was recorded.' : ''; w.stamp.textContent = ''; return; }
+  const r = resultFor(p.id, S.me), me = standings(p.id).solved.find(x => x.id === S.me);
+  w.txt.textContent = me && me.place ? `You finished ${ordinal(me.place)} and earned ${me.pts} ${me.pts === 1 ? 'point' : 'points'}.` : 'Solved.';
+  w.stamp.textContent = r ? 'Solved in ' + fmtDur(ms(r.solved_at) - ms(r.opened_at)) : '';
+}
+async function submitGrid(p, answer, statusEl) {
+  statusEl.textContent = 'Checking with the server…';
+  try {
+    const res = await rpc('submit_solution', { p_token: token, p_puzzle: p.id, p_answer: answer });
+    statusEl.textContent = res.correct ? '' : 'The server didn’t accept that. Double-check your work.';
+    await refresh(); return !!res.correct;
+  } catch (e) { statusEl.textContent = e.message; return false; }
+}
+
+/* ---------- sudoku ---------- */
+function mountSudoku(card, p, opts = {}) {
+  const cfg = p.config || {}, givens = (cfg.givens || '').padEnd(81, '0').slice(0, 81);
+  const LK = (opts.preview ? 'jdc-sdk-preview-' : 'jdc-sdk-') + p.id;
+  let vals = givens.split('').map(Number), sel = -1, undo = [], previewDone = false, sending = false, lastSent = '';
+  if (!opts.preview) { try { const s = store.get(LK); if (s && s.length === 81) vals = s.split('').map((d, i) => givens[i] !== '0' ? +givens[i] : +d); } catch (e) {} }
+  const save = () => { if (!opts.preview) store.set(LK, vals.join('')); };
+  if (cfg.brief) card.appendChild(el('p', 'sub', cfg.brief));
+  const status = el('div', 'meta'); card.appendChild(status);
+  const board = el('div', 'sdk'); card.appendChild(board);
+  const pad = el('div', 'sdkpad'); card.appendChild(pad);
+  const w = winCard('Solved'); card.appendChild(w.win);
+  const cells = [];
+  for (let i = 0; i < 81; i++) {
+    const r = Math.floor(i / 9), c = i % 9;
+    const b = el('button', 'sc' + (c % 3 === 2 && c < 8 ? ' bx' : '') + (r % 3 === 2 && r < 8 ? ' by' : '')); b.type = 'button';
+    b.setAttribute('aria-label', `Row ${r + 1}, column ${c + 1}`);
+    b.onclick = () => { sel = i; draw(); };
+    board.appendChild(b); cells.push(b);
+  }
+  const padBtns = [];
+  for (let d = 1; d <= 9; d++) { const b = el('button', null, String(d)); b.type = 'button'; b.onclick = () => put(d); pad.appendChild(b); padBtns.push(b); }
+  const erase = el('button', 'wide erase', 'Erase'); erase.type = 'button'; erase.onclick = () => put(0);
+  const und = el('button', 'wide', 'Undo'); und.type = 'button'; und.onclick = () => { const u = undo.pop(); if (!u) return; vals[u[0]] = u[1]; sel = u[0]; save(); draw(); check(); };
+  pad.append(erase, und);
+  const peers = i => { const r = Math.floor(i / 9), c = i % 9, br = r - r % 3, bc = c - c % 3; const s = new Set(); for (let k = 0; k < 9; k++) { s.add(r * 9 + k); s.add(k * 9 + c); s.add((br + Math.floor(k / 3)) * 9 + bc + k % 3); } s.delete(i); return s; };
+  const conflict = i => vals[i] && [...peers(i)].some(j => vals[j] === vals[i]);
+  function put(d) {
+    if (sel < 0 || givens[sel] !== '0' || isDone()) return;
+    if (vals[sel] === d) return;
+    undo.push([sel, vals[sel]]); vals[sel] = d; save(); draw(); check();
+  }
+  const isDone = () => opts.preview ? previewDone : !!solvedState(p, opts);
+  function draw() {
+    const done = isDone(), pr = sel >= 0 ? peers(sel) : new Set(), sv = sel >= 0 ? vals[sel] : 0;
+    cells.forEach((b, i) => {
+      b.textContent = vals[i] ? String(vals[i]) : '';
+      b.classList.toggle('given', givens[i] !== '0');
+      b.classList.toggle('sel', i === sel && !done);
+      b.classList.toggle('peer', pr.has(i) && !done);
+      b.classList.toggle('same', !!sv && vals[i] === sv && i !== sel && !done);
+      b.classList.toggle('bad', !!conflict(i) && givens[i] === '0');
+      b.classList.toggle('ok', done);
+    });
+    const counts = Array(10).fill(0); vals.forEach(v => counts[v]++);
+    padBtns.forEach((b, k) => { b.classList.toggle('used', counts[k + 1] >= 9); });
+    pad.hidden = done; w.win.hidden = !done; und.disabled = !undo.length;
+    const left = vals.filter(v => !v).length;
+    if (!sending) status.replaceChildren(el('span', null, done ? 'Complete' : `${left} ${left === 1 ? 'square' : 'squares'} left`));
+    if (done) fillWin(w, p, opts, previewDone);
+  }
+  async function check() {
+    if (vals.some(v => !v) || vals.some((_, i) => conflict(i))) return;
+    if (opts.preview) { previewDone = true; draw(); return; }
+    const grid = vals.join(''); if (!S.me || sending || grid === lastSent || isDone()) return;
+    sending = true; lastSent = grid; await submitGrid(p, { grid }, status); sending = false; draw();
+  }
+  card._sync = draw; draw(); check();
+}
+
+/* ---------- word search ---------- */
+const WS_COLORS = ['rgba(255,157,60,.45)', 'rgba(95,212,160,.45)', 'rgba(127,178,255,.45)', 'rgba(245,200,76,.45)', 'rgba(255,126,182,.45)', 'rgba(181,156,255,.45)', 'rgba(95,208,224,.45)'];
+function mountWordsearch(card, p, opts = {}) {
+  const cfg = p.config || {}, G = cfg.grid || [], WORDS = (cfg.words || []).map(x => x.toUpperCase());
+  const R = G.length, C = R ? G[0].length : 0;
+  const LK = (opts.preview ? 'jdc-ws-preview-' : 'jdc-ws-') + p.id;
+  let found = [];
+  if (!opts.preview) { try { found = JSON.parse(store.get(LK) || '[]').filter(f => WORDS.includes(f.word)); } catch (e) {} }
+  const save = () => { if (!opts.preview) store.set(LK, JSON.stringify(found)); };
+  let sending = false, lastSent = '', pending = null, drag = null;
+  if (cfg.brief) card.appendChild(el('p', 'sub', cfg.brief));
+  const status = el('div', 'meta'); card.appendChild(status);
+  const wrap = el('div', 'board-wrap'); const board = el('div', 'ws'); wrap.appendChild(board); card.appendChild(wrap);
+  const list = el('div', 'wslist'); card.appendChild(list);
+  const w = winCard('All words found'); card.appendChild(w.win);
+  const cells = [];
+  function build() {
+    const s = Math.max(20, Math.min(40, Math.floor((wrap.clientWidth || 300) / Math.max(C, 1))));
+    board.style.gridTemplateColumns = `repeat(${C}, ${s}px)`; board.style.gridAutoRows = s + 'px'; board.style.fontSize = Math.round(s * .5) + 'px';
+    board.replaceChildren(); cells.length = 0;
+    for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) { const d = el('div', 'wc', G[r][c]); d.dataset.r = r; d.dataset.c = c; board.appendChild(d); cells.push(d); }
+    draw();
+  }
+  const cellAt = (r, c) => cells[r * C + c];
+  const line = (a, b) => {
+    const dr = b.r - a.r, dc = b.c - a.c;
+    if (!(dr === 0 || dc === 0 || Math.abs(dr) === Math.abs(dc))) return null;
+    const n = Math.max(Math.abs(dr), Math.abs(dc)) + 1, sr = Math.sign(dr), sc = Math.sign(dc);
+    return Array.from({ length: n }, (_, i) => ({ r: a.r + sr * i, c: a.c + sc * i }));
+  };
+  const isDone = () => opts.preview ? found.length === WORDS.length : !!solvedState(p, opts);
+  function draw(path) {
+    cells.forEach(d => { d.style.background = ''; d.classList.remove('path', 'start'); });
+    found.forEach((f, k) => (line({ r: f.r1, c: f.c1 }, { r: f.r2, c: f.c2 }) || []).forEach(q => { const d = cellAt(q.r, q.c); if (d) d.style.background = WS_COLORS[WORDS.indexOf(f.word) % WS_COLORS.length]; }));
+    (path || []).forEach(q => cellAt(q.r, q.c).classList.add('path'));
+    if (pending && !path) cellAt(pending.r, pending.c).classList.add('start');
+    list.replaceChildren(...WORDS.map(x => el('span', found.some(f => f.word === x) ? 'got' : '', x)));
+    const done = isDone();
+    if (!sending) status.replaceChildren(el('span', null, `${found.length} / ${WORDS.length} words`));
+    board.classList.toggle('solved', done); w.win.hidden = !done;
+    if (done) fillWin(w, p, opts, true);
+  }
+  function tryPath(path) {
+    if (!path || path.length < 2) return false;
+    const s = path.map(q => G[q.r][q.c]).join('').toUpperCase(), rs = s.split('').reverse().join('');
+    const word = WORDS.find(x => (x === s || x === rs) && !found.some(f => f.word === x));
+    if (!word) return false;
+    const a = path[0], b = path[path.length - 1];
+    found.push({ word, r1: a.r, c1: a.c, r2: b.r, c2: b.c }); save(); return true;
+  }
+  const at = e => { const t = document.elementFromPoint(e.clientX, e.clientY); return t && t.classList.contains('wc') && board.contains(t) ? { r: +t.dataset.r, c: +t.dataset.c } : null; };
+  board.addEventListener('pointerdown', e => { if (isDone()) return; const q = at(e); if (!q) return; e.preventDefault(); drag = { a: q, b: q }; draw([q]); });
+  window.addEventListener('pointermove', e => { if (!drag) return; const q = at(e); if (!q) return; drag.b = q; draw(line(drag.a, q) || [drag.a]); });
+  const end = () => {
+    if (!drag) return; const { a, b } = drag; drag = null;
+    if (a.r === b.r && a.c === b.c) {        // a tap: first tap marks the start, second tap the end
+      if (pending && !(pending.r === a.r && pending.c === a.c)) { const ok = tryPath(line(pending, a)); pending = null; flash(ok); }
+      else pending = pending ? null : a;
+    } else { pending = null; flash(tryPath(line(a, b))); }
+    draw(); check();
+  };
+  window.addEventListener('pointerup', end); window.addEventListener('pointercancel', end);
+  function flash(ok) { if (ok && navigator.vibrate) { try { navigator.vibrate(20); } catch (e) {} } if (!ok) { board.classList.remove('shake'); void board.offsetWidth; board.classList.add('shake'); } }
+  async function check() {
+    if (found.length !== WORDS.length || opts.preview) return;
+    const sig = JSON.stringify(found); if (!S.me || sending || sig === lastSent || isDone()) return;
+    sending = true; lastSent = sig; await submitGrid(p, { found }, status); sending = false; draw();
+  }
+  card._sync = () => draw();
+  requestAnimationFrame(() => { build(); check(); });
 }
 
 /* ---------- riddle ---------- */
