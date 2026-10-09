@@ -1221,9 +1221,27 @@ async function refresh() {
   })();
   try { await inflight; } finally { inflight = null; }
 }
-setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, POLL_MS);
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refresh(); });
-refresh();
+/* Standalone preview: when a puzzle is embedded as window.__PREVIEW__, show just that puzzle, offline. */
+function bootPreview(P) {
+  S = { now: new Date().toISOString(), me: null, challengers: [], puzzles: [], results: [], mine: [], practices: [] };
+  $('tabbar').hidden = true; setBanner('');
+  ['pick', 'today', 'ranks', 'history', 'practice', 'coach'].forEach(k => $('v-' + k).hidden = k !== 'today');
+  const v = $('v-today'); v.replaceChildren();
+  const r = el('div', 'row wrap'); r.append(el('span', 'chip live', (TYPE_LABEL[P.type] || P.type) + ' · preview'), el('span', 'legend', 'Exactly how challengers will see it. Nothing is recorded.'));
+  v.append(r, el('h2', null, P.title));
+  const card = el('div', 'card'); card.id = 'player'; v.appendChild(card);
+  const mount = { nonogram: mountNonogram, sudoku: mountSudoku, wordsearch: mountWordsearch }[P.type];
+  if (mount) { store.set('jdc-nono-preview-' + P.id, null); mount(card, P, { preview: true }); }
+  else card.appendChild(el('p', 'sub', 'No preview for this puzzle type yet.'));
+  const again = el('button', 'btn small', 'Start over'); again.type = 'button'; again.onclick = () => bootPreview(P);
+  v.appendChild(again);
+}
+if (window.__PREVIEW__) bootPreview(window.__PREVIEW__);
+else {
+  setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, POLL_MS);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refresh(); });
+  refresh();
+}
 })();
 </script>
 </body>
