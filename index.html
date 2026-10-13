@@ -191,6 +191,13 @@ form.ans input:disabled { opacity: .5; }
 .findzoom button { width: 44px; height: 44px; border-radius: 10px; border: 1px solid var(--line); background: rgba(18,22,32,.85); color: var(--ink); font: 700 20px var(--mono); cursor: pointer; }
 .findzoom button:last-child { font-size: 12px; font-family: var(--body); }
 .findlock { position: absolute; left: 8px; right: 60px; top: 8px; background: rgba(18,22,32,.9); border: 1px solid var(--bad); color: var(--ink); border-radius: 8px; padding: 8px 10px; font: 13px var(--mono); }
+/* spot the difference */
+.spotwrap { display: flex; flex-direction: column; gap: 8px; }
+.spotview { position: relative; width: 100%; aspect-ratio: 1000 / 760; border-radius: 10px; overflow: hidden; background: #121620; border: 1px solid var(--line); }
+.spotview canvas { width: 100%; height: 100%; display: block; cursor: crosshair; touch-action: pan-y; }
+.spotview.zoomed canvas { touch-action: none; }
+.spottag { position: absolute; left: 8px; top: 8px; font: 700 13px var(--mono); color: var(--ink); background: rgba(18,22,32,.85); border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; pointer-events: none; }
+.spotzoom { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
 /* practice */
 .ticks { display: flex; flex-direction: column; gap: 8px; }
 .tick { display: grid; grid-template-columns: 1fr 52px 96px; gap: 8px; align-items: stretch; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 8px; min-width: 0; }
@@ -247,8 +254,8 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const RANK_PTS = [5, 3, 2, 1];   // 1st..4th on each puzzle
 const FINISH_PTS = 1;            // any later solve
 const POLL_MS = 12000;
-const TYPE_LABEL = { nonogram: 'Nonogram', riddle: 'Riddle', sudoku: 'Sudoku', wordsearch: 'Word search', findit: 'Find it' };
-const TRIES_TYPES = new Set(['riddle', 'findit']);   // puzzle types where wrong attempts count
+const TYPE_LABEL = { nonogram: 'Nonogram', riddle: 'Riddle', sudoku: 'Sudoku', wordsearch: 'Word search', findit: 'Find it', spotdiff: 'Spot the difference' };
+const TRIES_TYPES = new Set(['riddle', 'findit', 'spotdiff']);   // puzzle types where wrong attempts count
 const AV_COLORS = ['#ff9d3c', '#5fd4a0', '#7fb2ff', '#f5c84c', '#ff7eb6', '#b59cff', '#5fd0e0', '#d9925b'];
 
 /* ---------- tiny helpers ---------- */
@@ -461,7 +468,7 @@ function renderToday() {
     if (livePuzzles().length > 1) v.appendChild(el('p', 'legend', `${livePuzzles().length - 1} more live in History`));
     const card = el('div', 'card'); card.id = 'player'; v.appendChild(card);
     if (!S.me) card.appendChild(el('p', 'sub', 'Coach view: you can try the puzzle, but nothing is recorded.'));
-    const mount = { nonogram: mountNonogram, riddle: mountRiddle, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit }[p.type];
+    const mount = { nonogram: mountNonogram, riddle: mountRiddle, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff }[p.type];
     if (mount) mount(card, p); else card.appendChild(el('p', 'sub', 'This puzzle type needs an app update. Refresh the page, or tell Joaquin.'));
     const side = el('div', 'card'); side.id = 'todaySide'; v.appendChild(side);
     if (S.me) rpc('open_puzzle', { p_token: token, p_puzzle: p.id }).then(refresh).catch(() => {});
@@ -742,6 +749,7 @@ function renderPreview(panel, p) {
   else if (p.type === 'sudoku') mountSudoku(body, p, { preview: true });
   else if (p.type === 'wordsearch') mountWordsearch(body, p, { preview: true });
   else if (p.type === 'findit') mountFindit(body, p, { preview: true });
+  else if (p.type === 'spotdiff') mountSpotdiff(body, p, { preview: true });
   else if (p.type === 'riddle') {
     const cfg = p.config || {};
     if (cfg.brief) body.appendChild(el('p', 'sub', cfg.brief));
@@ -1117,12 +1125,12 @@ function findDrawScene(x, L) {
   x.fillStyle = '#2b2140'; x.fillRect(0, 0, W, TOP);
   x.fillStyle = '#3a2d57'; x.fillRect(0, TOP - 34, W, 34);
   x.fillStyle = '#1a1428'; x.fillRect(0, TOP - 6, W, 6);
-  [[60, 70], [W - 150, 70]].forEach(([sx, sy]) => { x.fillStyle = '#15111f'; x.beginPath(); x.roundRect(sx, sy, 90, 120, 8); x.fill(); x.fillStyle = '#4a3d66'; [[45, 40, 24], [45, 92, 16]].forEach(([cx, cy, r]) => { x.beginPath(); x.arc(sx + cx, sy + cy, r, 0, 7); x.fill(); }); });
+  if (!L.compact) [[60, 70], [W - 150, 70]].forEach(([sx, sy]) => { x.fillStyle = '#15111f'; x.beginPath(); x.roundRect(sx, sy, 90, 120, 8); x.fill(); x.fillStyle = '#4a3d66'; [[45, 40, 24], [45, 92, 16]].forEach(([cx, cy, r]) => { x.beginPath(); x.arc(sx + cx, sy + cy, r, 0, 7); x.fill(); }); });
   x.fillStyle = '#ff8a1f'; x.beginPath(); x.roundRect(W / 2 - 230, 40, 460, 74, 10); x.fill();
   x.fillStyle = '#1a1206'; x.font = '700 46px "Chakra Petch", system-ui, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('JDC WEST 2027', W / 2, 79);
   for (let i = 0; i < 9; i++) { const lx = 80 + i * (W - 160) / 8; x.fillStyle = FIND.accents[(i * 3) % FIND.accents.length]; x.globalAlpha = .9; x.beginPath(); x.arc(lx, 14, 9, 0, 7); x.fill(); x.globalAlpha = .12; x.beginPath(); x.moveTo(lx, 14); x.lineTo(lx - 70, TOP); x.lineTo(lx + 70, TOP); x.closePath(); x.fill(); }
   x.globalAlpha = 1;
-  L.figures.forEach(f => findDrawFig(x, f));
+  L.figures.forEach(f => { if (!f.gone) findDrawFig(x, f); });
 }
 
 function mountFindit(card, p, opts = {}) {
@@ -1245,6 +1253,181 @@ function mountFindit(card, p, opts = {}) {
   card._sync = sync;
   card._debug = () => ({ scale, ox, oy, box: L.box, W: L.W, H: L.H });
   if (window.ResizeObserver) new ResizeObserver(size).observe(view);
+  requestAnimationFrame(() => { size(); sync(); });
+}
+
+/* ---------- spot the difference ---------- */
+/* SPOTDIFF-LAYOUT-START */
+function spotLayout(cfg) {
+  const R = FIND.rng(cfg.seed || 1), int = n => Math.floor(R() * n);
+  const W = 1000, H = 760, TOP = 150;
+  const nd = Math.max(3, Math.min(8, cfg.diffs || 5)), count = Math.max(20, Math.min(70, cfg.count || 42));
+  const slots = [];
+  for (let y = TOP + 72; y < H - 8; y += 62) for (let x = 52; x < W - 40; x += 66) slots.push({ x: x + (R() - .5) * 26, y: y + (R() - .5) * 20 });
+  for (let i = slots.length - 1; i > 0; i--) { const j = int(i + 1); [slots[i], slots[j]] = [slots[j], slots[i]]; }
+  const scaleAt = y => 1.3 + 0.35 * (y - TOP) / (H - TOP);
+  // spread dancers evenly: skip slots too close to ones already taken
+  const picked = [];
+  for (const md of [78, 64, 0]) for (const sl of slots) { if (picked.length >= count) break; if (!picked.includes(sl) && picked.every(q => Math.hypot(q.x - sl.x, q.y - sl.y) >= md)) picked.push(sl); }
+  const A = picked.map(s => ({
+    x: s.x, y: s.y, s: scaleAt(s.y), shirt: int(8), hat: R() < .5 ? 1 + int(4) : 0, item: R() < .4 ? 1 + int(4) : 0,
+    pants: int(FIND.pants.length), skin: int(6), hair: int(6), hairStyle: int(3), hatColor: int(FIND.accents.length),
+    itemColor: int(FIND.accents.length), pose: int(4), flip: R() < .5 ? 1 : 0,
+  })).sort((a, b) => a.y - b.y);
+  // pick dancers that are fully visible and spread apart
+  const covered = i => A.some((g, j) => j > i && Math.abs(g.x - A[i].x) < 30 * A[i].s && g.y - A[i].y > 0 && g.y - A[i].y < 60 * A[i].s);
+  const order = A.map((_, i) => i); for (let i = order.length - 1; i > 0; i--) { const j = int(i + 1); [order[i], order[j]] = [order[j], order[i]]; }
+  const chosen = [];
+  for (const i of order) {
+    if (chosen.length >= nd) break;
+    const f = A[i];
+    if (f.x < 60 || f.x > W - 60 || f.y < TOP + 90 || covered(i)) continue;
+    if (chosen.some(k => Math.hypot(A[k].x - f.x, A[k].y - f.y) < 120)) continue;
+    chosen.push(i);
+  }
+  const kinds = ['shirt', 'hat', 'item', 'pose', 'hair', 'gone'];
+  for (let i = kinds.length - 1; i > 0; i--) { const j = int(i + 1); [kinds[i], kinds[j]] = [kinds[j], kinds[i]]; }
+  const B = A.map(f => ({ ...f }));
+  const diffs = chosen.map((i, k) => {
+    const kind = kinds[k % kinds.length], g = B[i], f = A[i];
+    if (kind === 'shirt') g.shirt = (f.shirt + 1 + int(7)) % 8;
+    if (kind === 'hat') g.hat = f.hat ? (R() < .5 ? 0 : 1 + (f.hat + int(3)) % 4) : 1 + int(4);
+    if (kind === 'item') g.item = f.item ? (R() < .4 ? 0 : 1 + (f.item + int(3)) % 4) : 1 + int(4);
+    if (kind === 'pose') g.pose = (f.pose + 1 + int(3)) % 4;
+    if (kind === 'hair') { g.hair = (f.hair + 2 + int(3)) % 6; g.hairStyle = (f.hairStyle + 1) % 3; }
+    if (kind === 'gone') g.gone = true;
+    const tall = (f.item === 1 || g.item === 1) ? 74 : 58;
+    return { i, kind, box: { x0: (f.x - 23 * f.s) / W, x1: (f.x + 23 * f.s) / W, y0: (f.y - tall * f.s) / H, y1: (f.y + 6) / H } };
+  });
+  const confetti = Array.from({ length: 150 }, () => ({ x: R() * W, y: TOP + R() * (H - TOP), c: int(FIND.accents.length), r: R() * Math.PI }));
+  return { W, H, TOP, A, B, diffs, confetti, compact: true };
+}
+/* SPOTDIFF-LAYOUT-END */
+
+function mountSpotdiff(card, p, opts = {}) {
+  const cfg = p.config || {}, L = spotLayout(cfg), N = L.diffs.length;
+  if (cfg.brief) card.appendChild(el('p', 'sub', cfg.brief));
+  const status = el('div', 'meta'); card.appendChild(status);
+  const lockMsg = el('p', 'msg wait'); lockMsg.hidden = true; card.appendChild(lockMsg);
+  const wrap = el('div', 'spotwrap'), panes = [];
+  ['A', 'B'].forEach((lab, k) => {
+    const v = el('div', 'spotview'), cv = el('canvas');
+    cv.setAttribute('role', 'img'); cv.setAttribute('aria-label', `Picture ${lab}. Tap a difference.`);
+    v.append(cv, el('span', 'spottag', lab)); wrap.appendChild(v);
+    panes.push({ v, cv, scene: Object.assign({}, L, { figures: k ? L.B : L.A }) });
+  });
+  const zb = el('div', 'spotzoom');
+  const zin = el('button', 'btn small', 'Zoom in'), zout = el('button', 'btn small', 'Zoom out'), zfit = el('button', 'btn small', 'Fit');
+  [zin, zout, zfit].forEach(b => { b.type = 'button'; zb.appendChild(b); });
+  card.append(wrap, zb);
+  const w = winCard('All differences found'); card.appendChild(w.win);
+
+  let scale = 1, ox = 0, oy = 0, vw = 0, vh = 0, minScale = 0, marks = [], busy = false, raf = 0, lt;
+  const localFound = new Set();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+  const foundList = () => opts.preview ? [...localFound] : (((mineFor(p.id) || {}).found) || []);
+  const isDone = () => opts.preview ? localFound.size >= N : !!solvedState(p, opts);
+  function clamp() {
+    const sw = L.W * scale, sh = L.H * scale;
+    ox = sw <= vw ? (vw - sw) / 2 : Math.min(0, Math.max(vw - sw, ox));
+    oy = sh <= vh ? (vh - sh) / 2 : Math.min(0, Math.max(vh - sh, oy));
+    panes.forEach(q => q.v.classList.toggle('zoomed', scale > minScale + 1e-6));
+  }
+  function size() {
+    vw = panes[0].v.clientWidth; vh = panes[0].v.clientHeight; if (!vw || !vh) return;
+    panes.forEach(q => { q.cv.width = Math.round(vw * dpr); q.cv.height = Math.round(vh * dpr); });
+    const fit = Math.min(vw / L.W, vh / L.H);
+    if (!minScale || scale < fit || scale === minScale) scale = fit;
+    minScale = fit; clamp(); draw();
+  }
+  function zoomAt(f, px, py) {
+    const ns = Math.max(minScale, Math.min(minScale * 6, scale * f));
+    ox = px - (px - ox) * (ns / scale); oy = py - (py - oy) * (ns / scale); scale = ns; clamp(); draw();
+  }
+  function draw() {
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => {
+      const now = performance.now(); marks = marks.filter(m => now - m.t < 900);
+      const found = foundList(), done = isDone();
+      panes.forEach(q => {
+        const x = q.cv.getContext('2d');
+        x.setTransform(1, 0, 0, 1, 0, 0); x.fillStyle = '#121620'; x.fillRect(0, 0, q.cv.width, q.cv.height);
+        x.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * ox, dpr * oy);
+        findDrawScene(x, q.scene);
+        L.diffs.forEach((d, k) => {
+          if (!found.includes(k) && !done) return;
+          const b = d.box; x.strokeStyle = found.includes(k) ? '#5fd4a0' : 'rgba(255,157,60,.9)'; x.lineWidth = 4 / scale;
+          x.beginPath(); x.ellipse((b.x0 + b.x1) / 2 * L.W, (b.y0 + b.y1) / 2 * L.H, (b.x1 - b.x0) * L.W * .62, (b.y1 - b.y0) * L.H * .6, 0, 0, 7); x.stroke();
+        });
+        marks.forEach(m => { const a = 1 - (now - m.t) / 900; x.strokeStyle = `rgba(255,107,107,${a})`; x.lineWidth = 4 / scale; const r = 12 / scale; x.beginPath(); x.moveTo(m.x - r, m.y - r); x.lineTo(m.x + r, m.y + r); x.moveTo(m.x + r, m.y - r); x.lineTo(m.x - r, m.y + r); x.stroke(); });
+      });
+      if (marks.length) draw();
+    });
+  }
+  async function guess(px, py) {
+    if (isDone() || busy) return;
+    const wx = (px - ox) / scale, wy = (py - oy) / scale, nx = wx / L.W, ny = wy / L.H;
+    if (nx < 0 || ny < 0 || nx > 1 || ny > 1) return;
+    if (opts.preview) {
+      const k = L.diffs.findIndex(d => nx >= d.box.x0 && nx <= d.box.x1 && ny >= d.box.y0 && ny <= d.box.y1);
+      if (k >= 0) localFound.add(k); else marks.push({ x: wx, y: wy, t: performance.now() });
+      sync(); return;
+    }
+    if (!S.me) return;
+    const m = mineFor(p.id); if (m && ms(m.locked_until) > serverNow()) return;
+    busy = true;
+    try {
+      const res = await rpc('submit_spot', { p_token: token, p_puzzle: p.id, p_x: nx, p_y: ny });
+      if (m) m.found = res.found || m.found;
+      if (res.correct) { if (navigator.vibrate) { try { navigator.vibrate(20); } catch (e) {} } }
+      else { marks.push({ x: wx, y: wy, t: performance.now() }); if (navigator.vibrate) { try { navigator.vibrate([30, 40, 30]); } catch (e) {} } }
+      draw();
+    } catch (e) { status.replaceChildren(el('span', null, e.message)); }
+    busy = false; await refresh();
+  }
+  const pts = new Map(); let start = null, pinch = null, moved = false;
+  panes.forEach(q => {
+    const cv = q.cv;
+    cv.addEventListener('pointerdown', e => {
+      cv.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
+      if (pts.size === 1) { start = { x: e.offsetX, y: e.offsetY, ox, oy, t: Date.now() }; moved = false; }
+      if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), s: scale }; moved = true; }
+    });
+    cv.addEventListener('pointermove', e => {
+      if (!pts.has(e.pointerId)) return; pts.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
+      if (pts.size === 2 && pinch) { const [a, b] = [...pts.values()], d = Math.hypot(a.x - b.x, a.y - b.y); zoomAt((pinch.s * d / pinch.d) / scale, (a.x + b.x) / 2, (a.y + b.y) / 2); }
+      else if (pts.size === 1 && start) {
+        const dx = e.offsetX - start.x, dy = e.offsetY - start.y;
+        if (Math.hypot(dx, dy) > 8) moved = true;
+        if (moved && scale > minScale + 1e-6) { ox = start.ox + dx; oy = start.oy + dy; clamp(); draw(); }
+      }
+    });
+    cv.addEventListener('pointerup', e => {
+      const wasTap = pts.size === 1 && start && !moved && Date.now() - start.t < 500;
+      pts.delete(e.pointerId); if (pts.size < 2) pinch = null;
+      if (pts.size === 1) { const [a] = [...pts.values()]; start = { x: a.x, y: a.y, ox, oy, t: 0 }; moved = true; }
+      if (!pts.size) { if (wasTap) guess(e.offsetX, e.offsetY); start = null; }
+    });
+    cv.addEventListener('pointercancel', e => { pts.delete(e.pointerId); start = null; pinch = null; });
+    cv.addEventListener('wheel', e => { if (!e.ctrlKey && !e.metaKey && scale <= minScale + 1e-6 && e.deltaY > 0) return; e.preventDefault(); zoomAt(e.deltaY < 0 ? 1.2 : 1 / 1.2, e.offsetX, e.offsetY); }, { passive: false });
+  });
+  zin.onclick = () => zoomAt(1.6, vw / 2, vh / 2); zout.onclick = () => zoomAt(1 / 1.6, vw / 2, vh / 2); zfit.onclick = () => { scale = minScale; clamp(); draw(); };
+
+  function sync() {
+    const done = isDone(), r = !opts.preview && S.me ? resultFor(p.id, S.me) : null, m = !opts.preview ? mineFor(p.id) : null;
+    const f = foundList().length;
+    status.replaceChildren(el('span', null, 'Found '), el('b', null, `${done ? N : f} / ${N}`), opts.preview ? '' : el('span', null, ' · Wrong taps '), opts.preview ? '' : el('b', null, String(r ? r.attempts : 0)));
+    w.win.hidden = !done;
+    if (done) { fillWin(w, p, opts, true); if (r) w.stamp.textContent = `${r.attempts} wrong ${r.attempts === 1 ? 'tap' : 'taps'} · ` + w.stamp.textContent; }
+    clearTimeout(lt);
+    const until = m && ms(m.locked_until), left = until ? until - serverNow() : 0;
+    lockMsg.hidden = !(left > 0 && !done);
+    if (left > 0 && !done) { lockMsg.textContent = `Too many wrong taps. Wait ${Math.ceil(left / 1000)}s.`; lt = setTimeout(sync, 250); }
+    draw();
+  }
+  card._sync = sync;
+  card._debug = () => ({ scale, ox, oy, W: L.W, H: L.H, diffs: L.diffs.map(d => d.box) });
+  if (window.ResizeObserver) new ResizeObserver(size).observe(panes[0].v);
   requestAnimationFrame(() => { size(); sync(); });
 }
 
@@ -1474,7 +1657,7 @@ function bootPreview(P) {
   const r = el('div', 'row wrap'); r.append(el('span', 'chip live', (TYPE_LABEL[P.type] || P.type) + ' · preview'), el('span', 'legend', 'Exactly how challengers will see it. Nothing is recorded.'));
   v.append(r, el('h2', null, P.title));
   const card = el('div', 'card'); card.id = 'player'; v.appendChild(card);
-  const mount = { nonogram: mountNonogram, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit }[P.type];
+  const mount = { nonogram: mountNonogram, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff }[P.type];
   if (mount) { store.set('jdc-nono-preview-' + P.id, null); mount(card, P, { preview: true }); }
   else card.appendChild(el('p', 'sub', 'No preview for this puzzle type yet.'));
   const again = el('button', 'btn small', 'Start over'); again.type = 'button'; again.onclick = () => bootPreview(P);
