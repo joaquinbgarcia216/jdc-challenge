@@ -171,8 +171,16 @@ form.ans input:disabled { opacity: .5; }
 .sdkpad { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; max-width: 380px; width: 100%; margin: 0 auto; }
 .sdkpad button { border: 1px solid var(--line); background: var(--bg); border-radius: 8px; font: 700 18px var(--mono); padding: 10px 0; cursor: pointer; }
 .sdkpad button.used { opacity: .3; }
-.sdkpad .wide { grid-column: span 4; font: 600 14px var(--body); }
-.sdkpad .erase { grid-column: span 5; }
+.sdkpad .wide { grid-column: span 3; font: 600 14px var(--body); }
+.sdkpad.noting button:not(.wide) { border-color: var(--signal); color: var(--signal); font-size: 15px; }
+.sdkpad .wide[aria-pressed="true"] { background: var(--signal); color: #1a1206; border-color: var(--signal); }
+.sdk:focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
+.sc .nts { display: grid; grid-template-columns: repeat(3, 1fr); width: 100%; height: 100%; padding: 1px; }
+.sc .nts span { display: grid; place-items: center; font: 600 clamp(8px, 2.7vw, 11px) var(--mono); color: var(--muted); line-height: 1; }
+.sc .nts span.hit { color: var(--signal); font-weight: 700; }
+.notetag { color: var(--signal); }
+.sdkkeys { text-align: center; }
+@media (hover: none) and (pointer: coarse) { .sdkkeys { display: none; } }
 /* word search */
 .ws { display: grid; margin: 0 auto; width: max-content; user-select: none; -webkit-user-select: none; touch-action: none; }
 .wc { display: grid; place-items: center; font-family: var(--mono); font-weight: 700; border-radius: 6px; cursor: pointer; }
@@ -898,39 +906,98 @@ async function submitGrid(p, answer, statusEl) {
 function mountSudoku(card, p, opts = {}) {
   const cfg = p.config || {}, givens = (cfg.givens || '').padEnd(81, '0').slice(0, 81);
   const LK = (opts.preview ? 'jdc-sdk-preview-' : 'jdc-sdk-') + p.id;
-  let vals = givens.split('').map(Number), sel = -1, undo = [], previewDone = false, sending = false, lastSent = '';
-  if (!opts.preview) { try { const s = store.get(LK); if (s && s.length === 81) vals = s.split('').map((d, i) => givens[i] !== '0' ? +givens[i] : +d); } catch (e) {} }
-  const save = () => { if (!opts.preview) store.set(LK, vals.join('')); };
+  // vals: the number in each square (0 = empty). notes: pencil marks per square, as a bitmask of 1-9.
+  let vals = givens.split('').map(Number), notes = Array(81).fill(0), sel = -1, noteMode = false;
+  let undo = [], previewDone = false, sending = false, lastSent = '';
+  if (!opts.preview) {
+    try {
+      const raw = store.get(LK) || '';
+      const saved = raw.startsWith('{') ? JSON.parse(raw) : { v: raw };
+      if (saved.v && saved.v.length === 81) vals = saved.v.split('').map((d, i) => givens[i] !== '0' ? +givens[i] : +d);
+      if (Array.isArray(saved.n) && saved.n.length === 81) notes = saved.n.map((m, i) => vals[i] ? 0 : (m | 0));
+    } catch (e) {}
+  }
+  const save = () => { if (!opts.preview) store.set(LK, JSON.stringify({ v: vals.join(''), n: notes })); };
   if (cfg.brief) card.appendChild(el('p', 'sub', cfg.brief));
   const status = el('div', 'meta'); card.appendChild(status);
-  const board = el('div', 'sdk'); card.appendChild(board);
+  const board = el('div', 'sdk'); board.tabIndex = 0; board.setAttribute('aria-label', 'Sudoku grid. Use arrow keys to move and type 1 to 9.');
+  card.appendChild(board);
   const pad = el('div', 'sdkpad'); card.appendChild(pad);
+  const keysHint = el('p', 'legend', 'On a laptop: type 1–9 · arrows to move · Backspace to erase · N for notes (or Shift + number) · Ctrl/Cmd+Z to undo');
+  keysHint.classList.add('sdkkeys'); card.appendChild(keysHint);
   const w = winCard('Solved'); card.appendChild(w.win);
   const cells = [];
   for (let i = 0; i < 81; i++) {
     const r = Math.floor(i / 9), c = i % 9;
-    const b = el('button', 'sc' + (c % 3 === 2 && c < 8 ? ' bx' : '') + (r % 3 === 2 && r < 8 ? ' by' : '')); b.type = 'button';
+    const b = el('button', 'sc' + (c % 3 === 2 && c < 8 ? ' bx' : '') + (r % 3 === 2 && r < 8 ? ' by' : '')); b.type = 'button'; b.tabIndex = -1;
     b.setAttribute('aria-label', `Row ${r + 1}, column ${c + 1}`);
-    b.onclick = () => { sel = i; draw(); };
+    b.onclick = () => { sel = i; draw(); board.focus({ preventScroll: true }); };
     board.appendChild(b); cells.push(b);
   }
   const padBtns = [];
-  for (let d = 1; d <= 9; d++) { const b = el('button', null, String(d)); b.type = 'button'; b.onclick = () => put(d); pad.appendChild(b); padBtns.push(b); }
-  const erase = el('button', 'wide erase', 'Erase'); erase.type = 'button'; erase.onclick = () => put(0);
-  const und = el('button', 'wide', 'Undo'); und.type = 'button'; und.onclick = () => { const u = undo.pop(); if (!u) return; vals[u[0]] = u[1]; sel = u[0]; save(); draw(); check(); };
-  pad.append(erase, und);
+  for (let d = 1; d <= 9; d++) { const b = el('button', null, String(d)); b.type = 'button'; b.onclick = () => (noteMode ? toggleNote(d) : put(d)); pad.appendChild(b); padBtns.push(b); }
+  const noteBtn = el('button', 'wide', 'Notes: off'); noteBtn.type = 'button'; noteBtn.onclick = () => { noteMode = !noteMode; draw(); };
+  const erase = el('button', 'wide', 'Erase'); erase.type = 'button'; erase.onclick = () => put(0);
+  const und = el('button', 'wide', 'Undo'); und.type = 'button'; und.onclick = () => doUndo();
+  pad.append(noteBtn, erase, und);
+
   const peers = i => { const r = Math.floor(i / 9), c = i % 9, br = r - r % 3, bc = c - c % 3; const s = new Set(); for (let k = 0; k < 9; k++) { s.add(r * 9 + k); s.add(k * 9 + c); s.add((br + Math.floor(k / 3)) * 9 + bc + k % 3); } s.delete(i); return s; };
   const conflict = i => vals[i] && [...peers(i)].some(j => vals[j] === vals[i]);
-  function put(d) {
-    if (sel < 0 || givens[sel] !== '0' || isDone()) return;
-    if (vals[sel] === d) return;
-    undo.push([sel, vals[sel]]); vals[sel] = d; save(); draw(); check();
-  }
   const isDone = () => opts.preview ? previewDone : !!solvedState(p, opts);
+  const editable = () => sel >= 0 && givens[sel] === '0' && !isDone();
+  // Each undo step remembers the squares it touched: [index, old number, old notes]
+  function commit(touched) { if (touched.length) undo.push(touched); save(); draw(); check(); }
+  function put(d) {
+    if (!editable()) return;
+    if (vals[sel] === d && !notes[sel]) return;
+    const touched = [[sel, vals[sel], notes[sel]]];
+    vals[sel] = d; notes[sel] = 0;
+    if (d) for (const j of peers(sel)) if (notes[j] & (1 << d)) { touched.push([j, vals[j], notes[j]]); notes[j] &= ~(1 << d); }   // clear that pencil mark nearby
+    commit(touched);
+  }
+  function toggleNote(d) {
+    if (!editable() || vals[sel]) return;
+    const touched = [[sel, vals[sel], notes[sel]]];
+    notes[sel] ^= (1 << d); commit(touched);
+  }
+  function doUndo() { const u = undo.pop(); if (!u) return; u.forEach(([i, v, n]) => { vals[i] = v; notes[i] = n; }); sel = u[0][0]; save(); draw(); check(); }
+
+  // Keyboard: works whenever this puzzle is on screen and you're not typing in a text box.
+  function onKey(e) {
+    if (!board.isConnected) { document.removeEventListener('keydown', onKey); return; }
+    if (!board.offsetParent || isDone()) return;
+    const t = e.target; if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    const k = e.key;
+    if ((e.ctrlKey || e.metaKey) && k.toLowerCase() === 'z') { e.preventDefault(); doUndo(); return; }
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const moves = { ArrowUp: -9, ArrowDown: 9, ArrowLeft: -1, ArrowRight: 1 };
+    if (k in moves) {
+      e.preventDefault();
+      if (sel < 0) sel = 0;
+      else { const r = Math.floor(sel / 9), c = sel % 9; const nr = (r + (k === 'ArrowUp' ? -1 : k === 'ArrowDown' ? 1 : 0) + 9) % 9, nc = (c + (k === 'ArrowLeft' ? -1 : k === 'ArrowRight' ? 1 : 0) + 9) % 9; sel = nr * 9 + nc; }
+      draw(); return;
+    }
+    const digit = /^Digit([1-9])$/.exec(e.code) || /^Numpad([1-9])$/.exec(e.code);
+    if (digit || /^[1-9]$/.test(k)) {
+      if (sel < 0) return;
+      e.preventDefault();
+      const d = digit ? +digit[1] : +k;
+      (noteMode || e.shiftKey) ? toggleNote(d) : put(d); return;
+    }
+    if (k === 'Backspace' || k === 'Delete' || k === '0') { if (sel >= 0) { e.preventDefault(); put(0); } return; }
+    if (k === 'n' || k === 'N') { e.preventDefault(); noteMode = !noteMode; draw(); }
+  }
+  document.addEventListener('keydown', onKey);
+
   function draw() {
     const done = isDone(), pr = sel >= 0 ? peers(sel) : new Set(), sv = sel >= 0 ? vals[sel] : 0;
     cells.forEach((b, i) => {
-      b.textContent = vals[i] ? String(vals[i]) : '';
+      if (vals[i]) b.textContent = String(vals[i]);
+      else if (notes[i] && !done) {
+        const g = el('span', 'nts');
+        for (let d = 1; d <= 9; d++) g.appendChild(el('span', sv === d ? 'hit' : '', notes[i] & (1 << d) ? String(d) : ''));
+        b.replaceChildren(g);
+      } else b.textContent = '';
       b.classList.toggle('given', givens[i] !== '0');
       b.classList.toggle('sel', i === sel && !done);
       b.classList.toggle('peer', pr.has(i) && !done);
@@ -940,9 +1007,11 @@ function mountSudoku(card, p, opts = {}) {
     });
     const counts = Array(10).fill(0); vals.forEach(v => counts[v]++);
     padBtns.forEach((b, k) => { b.classList.toggle('used', counts[k + 1] >= 9); });
-    pad.hidden = done; w.win.hidden = !done; und.disabled = !undo.length;
+    pad.classList.toggle('noting', noteMode);
+    noteBtn.textContent = noteMode ? 'Notes: on' : 'Notes: off'; noteBtn.setAttribute('aria-pressed', String(noteMode));
+    pad.hidden = done; keysHint.hidden = done; w.win.hidden = !done; und.disabled = !undo.length;
     const left = vals.filter(v => !v).length;
-    if (!sending) status.replaceChildren(el('span', null, done ? 'Complete' : `${left} ${left === 1 ? 'square' : 'squares'} left`));
+    if (!sending) status.replaceChildren(el('span', null, done ? 'Complete' : `${left} ${left === 1 ? 'square' : 'squares'} left`), noteMode && !done ? el('span', 'notetag', 'Writing notes') : '');
     if (done) fillWin(w, p, opts, previewDone);
   }
   async function check() {
