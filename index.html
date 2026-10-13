@@ -181,6 +181,16 @@ form.ans input:disabled { opacity: .5; }
 .ws.solved .wc { cursor: default; }
 .wslist { display: flex; flex-wrap: wrap; gap: 6px 12px; font: 600 13px var(--mono); letter-spacing: .06em; }
 .wslist .got { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--ok); }
+/* find it */
+.findwant { display: flex; gap: 12px; align-items: center; background: var(--bg); border: 1px dashed var(--signal); border-radius: 10px; padding: 8px; }
+.findwant canvas { width: 72px; height: 90px; flex: none; border-radius: 8px; }
+.findwant p { font-weight: 600; font-size: 15px; line-height: 1.4; min-width: 0; }
+.findview { position: relative; width: 100%; aspect-ratio: 1000 / 1300; max-height: 72vh; border-radius: 10px; overflow: hidden; background: #121620; border: 1px solid var(--line); }
+.findview canvas { width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; }
+.findzoom { position: absolute; right: 8px; bottom: 8px; display: flex; flex-direction: column; gap: 6px; }
+.findzoom button { width: 44px; height: 44px; border-radius: 10px; border: 1px solid var(--line); background: rgba(18,22,32,.85); color: var(--ink); font: 700 20px var(--mono); cursor: pointer; }
+.findzoom button:last-child { font-size: 12px; font-family: var(--body); }
+.findlock { position: absolute; left: 8px; right: 60px; top: 8px; background: rgba(18,22,32,.9); border: 1px solid var(--bad); color: var(--ink); border-radius: 8px; padding: 8px 10px; font: 13px var(--mono); }
 /* practice */
 .ticks { display: flex; flex-direction: column; gap: 8px; }
 .tick { display: grid; grid-template-columns: 1fr 52px 96px; gap: 8px; align-items: stretch; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 8px; min-width: 0; }
@@ -237,7 +247,8 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const RANK_PTS = [5, 3, 2, 1];   // 1st..4th on each puzzle
 const FINISH_PTS = 1;            // any later solve
 const POLL_MS = 12000;
-const TYPE_LABEL = { nonogram: 'Nonogram', riddle: 'Riddle', sudoku: 'Sudoku', wordsearch: 'Word search' };
+const TYPE_LABEL = { nonogram: 'Nonogram', riddle: 'Riddle', sudoku: 'Sudoku', wordsearch: 'Word search', findit: 'Find it' };
+const TRIES_TYPES = new Set(['riddle', 'findit']);   // puzzle types where wrong attempts count
 const AV_COLORS = ['#ff9d3c', '#5fd4a0', '#7fb2ff', '#f5c84c', '#ff7eb6', '#b59cff', '#5fd0e0', '#d9925b'];
 
 /* ---------- tiny helpers ---------- */
@@ -299,7 +310,9 @@ const isGuest = id => roleOf(id) === 'guest';
 function standings(pid, src) {
   const rows = (src || S.results).filter(r => r.puzzle_id === pid);
   let place = 0;
-  const solved = rows.filter(r => r.solved_at).sort((a, b) => ms(a.solved_at) - ms(b.solved_at)).map(r => {
+  // Ranked by solve time (opened → solved); ties go to whoever finished first.
+  const took = r => ms(r.solved_at) - ms(r.opened_at);
+  const solved = rows.filter(r => r.solved_at).sort((a, b) => took(a) - took(b) || ms(a.solved_at) - ms(b.solved_at)).map(r => {
     const id = r.challenger_id;
     if (isGuest(id)) return { r, id, guest: true, place: null, pts: 0 };
     place++; return { r, id, place, pts: place <= RANK_PTS.length ? RANK_PTS[place - 1] : FINISH_PTS };
@@ -332,12 +345,12 @@ function standingsList(p, showTrying) {
   const ul = el('ul', 'list');
   solved.forEach(x => {
     const bits = ['took ' + fmtDur(ms(x.r.solved_at) - ms(x.r.opened_at))];
-    if (p.type === 'riddle') bits.push(`${x.r.attempts + 1} ${x.r.attempts ? 'tries' : 'try'}`);
+    if (TRIES_TYPES.has(p.type)) bits.push(`${x.r.attempts + 1} ${x.r.attempts ? 'tries' : 'try'}`);
     if (x.r.hint_used) bits.push('hint');
     if (x.guest) bits.unshift('guest');
     ul.appendChild(personRow(x.place, personOf(x.id), bits.join(' · '), x.guest ? '' : '+' + x.pts, x.guest ? '' : 'PTS'));
   });
-  if (showTrying) trying.forEach(x => ul.appendChild(personRow(null, personOf(x.id), (x.guest ? 'guest · ' : '') + (p.type === 'riddle' ? `working · ${x.r.attempts} wrong` : 'working on it'), '', '')));
+  if (showTrying) trying.forEach(x => ul.appendChild(personRow(null, personOf(x.id), (x.guest ? 'guest · ' : '') + (TRIES_TYPES.has(p.type) ? `working · ${x.r.attempts} wrong` : 'working on it'), '', '')));
   if (!ul.children.length) ul.appendChild(el('li', 'empty', 'Nobody has solved this one yet.'));
   return ul;
 }
@@ -448,7 +461,7 @@ function renderToday() {
     if (livePuzzles().length > 1) v.appendChild(el('p', 'legend', `${livePuzzles().length - 1} more live in History`));
     const card = el('div', 'card'); card.id = 'player'; v.appendChild(card);
     if (!S.me) card.appendChild(el('p', 'sub', 'Coach view: you can try the puzzle, but nothing is recorded.'));
-    const mount = { nonogram: mountNonogram, riddle: mountRiddle, sudoku: mountSudoku, wordsearch: mountWordsearch }[p.type];
+    const mount = { nonogram: mountNonogram, riddle: mountRiddle, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit }[p.type];
     if (mount) mount(card, p); else card.appendChild(el('p', 'sub', 'This puzzle type needs an app update. Refresh the page, or tell Joaquin.'));
     const side = el('div', 'card'); side.id = 'todaySide'; v.appendChild(side);
     if (S.me) rpc('open_puzzle', { p_token: token, p_puzzle: p.id }).then(refresh).catch(() => {});
@@ -456,7 +469,7 @@ function renderToday() {
   renderAnnouncement();
   const side = $('todaySide');
   const { solved, trying } = standings(p.id);
-  const head = el('div', 'row between'); head.append(el('h3', null, 'Solve order'), el('span', 'legend', `${solved.length} solved · ${trying.length} working`));
+  const head = el('div', 'row between'); head.append(el('h3', null, 'Fastest solves'), el('span', 'legend', `${solved.length} solved · ${trying.length} working`));
   side.replaceChildren(head, standingsList(p, true));
   const pl = $('player'); if (pl && pl._sync) pl._sync();
 }
@@ -464,7 +477,7 @@ function renderToday() {
 /* ---------- rankings ---------- */
 function renderRanks() {
   const v = $('v-ranks'); v.replaceChildren(el('h2', null, 'Season rankings'));
-  v.appendChild(el('p', 'legend', `1st ${RANK_PTS[0]} · 2nd ${RANK_PTS[1]} · 3rd ${RANK_PTS[2]} · 4th ${RANK_PTS[3]} · any other solve ${FINISH_PTS}`));
+  v.appendChild(el('p', 'legend', `Fastest solve on each puzzle: 1st ${RANK_PTS[0]} · 2nd ${RANK_PTS[1]} · 3rd ${RANK_PTS[2]} · 4th ${RANK_PTS[3]} · any other solve ${FINISH_PTS}`));
   const t = overall();
   if (!t.length || !t[0].pts) { v.appendChild(el('p', 'empty', 'Rankings start once someone solves a puzzle.')); return; }
   const pod = el('div', 'podium');
@@ -591,7 +604,7 @@ function renderCoach() {
       if (x.r && x.r.tries && x.r.tries.length) nt.appendChild(el('div', 'tries', x.r.tries.slice(-5).join(' · ')));
       tr.appendChild(nt);
       tr.appendChild(el('td', x.r ? (x.r.solved_at ? 'st-ok' : 'st-wip') : 'st-no', x.r ? (x.r.solved_at ? 'Solved' + (x.r.hint_used ? ' (hint)' : '') : 'Working' + (x.r.hint_used ? ' (hint)' : '')) : 'Not opened'));
-      tr.appendChild(el('td', 'num', x.r && p.type === 'riddle' ? String(x.r.attempts) : '—'));
+      tr.appendChild(el('td', 'num', x.r && TRIES_TYPES.has(p.type) ? String(x.r.attempts) : '—'));
       tr.appendChild(el('td', 'num', x.r && x.r.solved_at ? fmtDur(ms(x.r.solved_at) - ms(x.r.opened_at)) : '—'));
       body.appendChild(tr);
     });
@@ -728,6 +741,7 @@ function renderPreview(panel, p) {
   if (p.type === 'nonogram') { store.set('jdc-nono-preview-' + p.id, null); mountNonogram(body, p, { preview: true }); }
   else if (p.type === 'sudoku') mountSudoku(body, p, { preview: true });
   else if (p.type === 'wordsearch') mountWordsearch(body, p, { preview: true });
+  else if (p.type === 'findit') mountFindit(body, p, { preview: true });
   else if (p.type === 'riddle') {
     const cfg = p.config || {};
     if (cfg.brief) body.appendChild(el('p', 'sub', cfg.brief));
@@ -860,7 +874,7 @@ function winCard(title) { const win = el('div', 'win'), txt = el('p', 'sub'), st
 function fillWin(w, p, opts, previewDone) {
   if (opts.preview) { w.txt.textContent = previewDone ? 'Preview: solved. Nothing was recorded.' : ''; w.stamp.textContent = ''; return; }
   const r = resultFor(p.id, S.me), me = standings(p.id).solved.find(x => x.id === S.me);
-  w.txt.textContent = me && me.place ? `You finished ${ordinal(me.place)} and earned ${me.pts} ${me.pts === 1 ? 'point' : 'points'}.` : 'Solved.';
+  w.txt.textContent = me && me.place ? `You’re ${ordinal(me.place)} fastest so far (${me.pts} ${me.pts === 1 ? 'point' : 'points'}).` : 'Solved.';
   w.stamp.textContent = r ? 'Solved in ' + fmtDur(ms(r.solved_at) - ms(r.opened_at)) : '';
 }
 async function submitGrid(p, answer, statusEl) {
@@ -1004,6 +1018,236 @@ function mountWordsearch(card, p, opts = {}) {
   requestAnimationFrame(() => { build(); check(); });
 }
 
+/* ---------- find it (Where's-Waldo style) ---------- */
+/* FINDIT-LAYOUT-START */
+const FIND = {
+  W: 1000, H: 1300, TOP: 230,
+  shirts: [['red', '#e5484d'], ['orange', '#ff8a1f'], ['yellow', '#f2c230'], ['green', '#3fae6a'], ['teal', '#22a6b3'], ['blue', '#3f6fe8'], ['purple', '#8e5cf0'], ['pink', '#f26ea8']],
+  pants: ['#2a2f3a', '#3b4a6b', '#6b4a2f', '#555c6b', '#1f3b5c', '#8c8f99'],
+  skins: ['#f5d0b0', '#e8b48a', '#c98e62', '#a26a43', '#7a4b2c', '#5a3520'],
+  hairs: ['#1d1a17', '#4a2e1a', '#8a5a2b', '#d9b061', '#b5482c', '#e8e2d8'],
+  hats: [['none', ''], ['cap', 'a cap'], ['beanie', 'a beanie'], ['headband', 'a headband'], ['bucket', 'a bucket hat']],
+  items: [['none', ''], ['balloon', 'holding a balloon'], ['flag', 'holding a flag'], ['trophy', 'holding a trophy'], ['mic', 'holding a mic']],
+  accents: ['#e5484d', '#f2c230', '#3f6fe8', '#3fae6a', '#f2f4f8', '#2a2f3a', '#ff8a1f', '#8e5cf0', '#22a6b3', '#f26ea8'],
+  rng(seed) { let a = seed >>> 0; return () => { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; },
+};
+function findLayout(cfg) {
+  const R = FIND.rng(cfg.seed || 1), int = n => Math.floor(R() * n), { W, H, TOP } = FIND;
+  const count = Math.max(30, Math.min(260, cfg.count || 150)), decoys = cfg.decoys == null ? 12 : cfg.decoys;
+  const T = { shirt: int(8), hat: 1 + int(4), item: 1 + int(4) };
+  const slots = [];
+  for (let y = TOP + 44; y < H - 10; y += 40) for (let x = 30; x < W - 24; x += 38) slots.push({ x: x + (R() - .5) * 22, y: y + (R() - .5) * 18 });
+  for (let i = slots.length - 1; i > 0; i--) { const j = int(i + 1); [slots[i], slots[j]] = [slots[j], slots[i]]; }
+  const ti = slots.findIndex(s => s.x > W * .1 && s.x < W * .9 && s.y > TOP + 140 && s.y < H - 70);
+  const t = slots.splice(ti, 1)[0];
+  const scaleAt = y => 0.82 + 0.36 * (y - TOP) / (H - TOP);
+  const ts = scaleAt(t.y);
+  // nothing may stand in front of the target and cover it
+  const free = slots.filter(s => !(Math.abs(s.x - t.x) < 30 * ts && s.y > t.y - 6 && s.y < t.y + 56 * ts));
+  const fig = (pos, attrs) => Object.assign({
+    x: pos.x, y: pos.y, s: scaleAt(pos.y), pants: int(FIND.pants.length), skin: int(6), hair: int(6), hairStyle: int(3),
+    hatColor: int(FIND.accents.length), itemColor: int(FIND.accents.length), pose: int(4), flip: R() < .5 ? 1 : 0,
+  }, attrs);
+  const figs = [fig(t, { ...T, target: true })];
+  for (let k = 0; k < count - 1 && k < free.length; k++) {
+    let a = { shirt: int(8), hat: R() < .45 ? 1 + int(4) : 0, item: R() < .32 ? 1 + int(4) : 0 };
+    if (k < decoys) {   // share exactly two of the three target traits
+      a = { ...T }; const drop = k % 3;
+      if (drop === 0) a.shirt = (T.shirt + 1 + int(7)) % 8;
+      if (drop === 1) a.hat = R() < .3 ? 0 : 1 + (T.hat + int(3)) % 4;
+      if (drop === 2) a.item = R() < .3 ? 0 : 1 + (T.item + int(3)) % 4;
+    }
+    if (a.shirt === T.shirt && a.hat === T.hat && a.item === T.item) a.item = 0;
+    figs.push(fig(free[k], a));
+  }
+  const confetti = Array.from({ length: 260 }, () => ({ x: R() * W, y: TOP + R() * (H - TOP), c: int(FIND.accents.length), r: R() * Math.PI }));
+  figs.sort((a, b) => a.y - b.y);
+  const target = figs.findIndex(f => f.target), f = figs[target];
+  const top = f.y - (f.item === 1 ? 72 : 54) * f.s;
+  const box = { x0: (f.x - 20 * f.s) / W, x1: (f.x + 20 * f.s) / W, y0: top / H, y1: (f.y + 5) / H };
+  return { W, H, TOP, figures: figs, target, T, box, confetti };
+}
+function findDescribe(T) { return `Find the dancer in the ${FIND.shirts[T.shirt][0]} shirt, wearing ${FIND.hats[T.hat][1]} and ${FIND.items[T.item][1]}.`; }
+/* FINDIT-LAYOUT-END */
+
+function findDrawFig(x, f) {
+  const ink = '#1d1a24', d = f.flip ? -1 : 1;
+  x.save(); x.translate(f.x, f.y); x.scale(f.s * d, f.s); x.lineCap = 'round'; x.lineJoin = 'round';
+  x.fillStyle = 'rgba(0,0,0,.18)'; x.beginPath(); x.ellipse(0, 1, 11, 3, 0, 0, 7); x.fill();
+  const line = (pts, w, c) => { x.strokeStyle = c; x.lineWidth = w; x.beginPath(); pts.forEach(([a, b], i) => i ? x.lineTo(a, b) : x.moveTo(a, b)); x.stroke(); };
+  const legs = f.pose === 3 ? [[[-3, -15], [-5, 0]], [[3, -15], [11, -6]]] : [[[-3, -15], [-4, 0]], [[3, -15], [4, 0]]];
+  legs.forEach(l => { line(l, 6.5, ink); line(l, 4.4, FIND.pants[f.pants]); });
+  const arms = [
+    [[[-6, -27], [-11, -41]], [[6, -27], [11, -41]]],
+    [[[-6, -27], [-17, -25]], [[6, -27], [17, -25]]],
+    [[[-6, -27], [-9, -15]], [[6, -27], [12, -42]]],
+    [[[-6, -27], [-12, -21], [-7, -17]], [[6, -27], [14, -33]]],
+  ][f.pose];
+  const shirt = FIND.shirts[f.shirt][1], skin = FIND.skins[f.skin];
+  x.fillStyle = shirt; x.strokeStyle = ink; x.lineWidth = 1.6; x.beginPath(); x.roundRect(-7, -31, 14, 17, 4); x.fill(); x.stroke();
+  arms.forEach(a => { line(a, 5.6, ink); line(a, 3.6, shirt); const [hx, hy] = a[a.length - 1]; x.fillStyle = skin; x.beginPath(); x.arc(hx, hy, 2.3, 0, 7); x.fill(); });
+  const [hx, hy] = arms[1][arms[1].length - 1];
+  const hair = FIND.hairs[f.hair];
+  if (f.hairStyle === 1) { x.fillStyle = hair; x.beginPath(); x.roundRect(-7, -41, 14, 13, 4); x.fill(); }
+  x.fillStyle = skin; x.strokeStyle = ink; x.lineWidth = 1.5; x.beginPath(); x.arc(0, -37, 6.2, 0, 7); x.fill(); x.stroke();
+  x.fillStyle = hair; x.beginPath(); x.arc(0, -38, 6.4, Math.PI * 1.05, Math.PI * 1.95); x.closePath(); x.fill();
+  if (f.hairStyle === 2) { x.beginPath(); x.arc(0, -45.5, 3, 0, 7); x.fill(); }
+  const hc = FIND.accents[f.hatColor];
+  x.fillStyle = hc; x.strokeStyle = ink; x.lineWidth = 1.3;
+  if (f.hat === 1) { x.beginPath(); x.arc(0, -39, 6.6, Math.PI, 0); x.closePath(); x.fill(); x.stroke(); x.beginPath(); x.roundRect(2, -40.5, 9, 3, 1.5); x.fill(); x.stroke(); }
+  if (f.hat === 2) { x.beginPath(); x.ellipse(0, -40, 6.8, 7.5, 0, Math.PI, 0); x.closePath(); x.fill(); x.stroke(); x.beginPath(); x.arc(0, -48, 2.6, 0, 7); x.fill(); x.stroke(); }
+  if (f.hat === 3) { x.beginPath(); x.roundRect(-6.8, -42, 13.6, 3.4, 1.5); x.fill(); x.stroke(); }
+  if (f.hat === 4) { x.beginPath(); x.moveTo(-5, -47); x.lineTo(5, -47); x.lineTo(7, -41); x.lineTo(-7, -41); x.closePath(); x.fill(); x.stroke(); x.beginPath(); x.ellipse(0, -41, 10, 2.4, 0, 0, 7); x.fill(); x.stroke(); }
+  const ic = FIND.accents[f.itemColor];
+  if (f.item === 1) { line([[hx, hy], [hx + 3, hy - 17]], 1, ink); x.fillStyle = ic === '#2a2f3a' ? '#e5484d' : ic; x.strokeStyle = ink; x.lineWidth = 1.3; x.beginPath(); x.ellipse(hx + 3, hy - 23, 5, 6, 0, 0, 7); x.fill(); x.stroke(); }
+  if (f.item === 2) { line([[hx, hy + 6], [hx, hy - 13]], 1.6, ink); x.fillStyle = ic; x.strokeStyle = ink; x.lineWidth = 1.1; x.beginPath(); x.rect(hx, hy - 13, 9, 6); x.fill(); x.stroke(); }
+  if (f.item === 3) { x.fillStyle = '#f2c230'; x.strokeStyle = ink; x.lineWidth = 1.2; x.beginPath(); x.moveTo(hx - 4, hy - 9); x.lineTo(hx + 4, hy - 9); x.lineTo(hx + 2, hy - 3); x.lineTo(hx - 2, hy - 3); x.closePath(); x.fill(); x.stroke(); x.beginPath(); x.rect(hx - 2.5, hy - 1, 5, 2); x.fill(); x.stroke(); }
+  if (f.item === 4) { line([[hx, hy + 2], [hx + 2, hy - 7]], 2.4, ink); x.fillStyle = '#555c6b'; x.beginPath(); x.arc(hx + 2.4, hy - 8.5, 2.6, 0, 7); x.fill(); }
+  x.restore();
+}
+function findDrawScene(x, L) {
+  const { W, H, TOP } = L;
+  x.fillStyle = '#d9a86c'; x.fillRect(0, TOP, W, H - TOP);
+  x.strokeStyle = 'rgba(120,72,30,.22)'; x.lineWidth = 2;
+  for (let y = TOP + 26; y < H; y += 26) { x.beginPath(); x.moveTo(0, y); x.lineTo(W, y); x.stroke(); }
+  for (let y = TOP; y < H; y += 26) for (let k = 0; k < 6; k++) { const px = ((y * 7 + k * 173) % W); x.beginPath(); x.moveTo(px, y); x.lineTo(px, y + 26); x.stroke(); }
+  L.confetti.forEach(c => { x.save(); x.translate(c.x, c.y); x.rotate(c.r); x.fillStyle = FIND.accents[c.c]; x.globalAlpha = .55; x.fillRect(-3, -1.5, 6, 3); x.restore(); });
+  x.globalAlpha = 1;
+  // stage
+  x.fillStyle = '#2b2140'; x.fillRect(0, 0, W, TOP);
+  x.fillStyle = '#3a2d57'; x.fillRect(0, TOP - 34, W, 34);
+  x.fillStyle = '#1a1428'; x.fillRect(0, TOP - 6, W, 6);
+  [[60, 70], [W - 150, 70]].forEach(([sx, sy]) => { x.fillStyle = '#15111f'; x.beginPath(); x.roundRect(sx, sy, 90, 120, 8); x.fill(); x.fillStyle = '#4a3d66'; [[45, 40, 24], [45, 92, 16]].forEach(([cx, cy, r]) => { x.beginPath(); x.arc(sx + cx, sy + cy, r, 0, 7); x.fill(); }); });
+  x.fillStyle = '#ff8a1f'; x.beginPath(); x.roundRect(W / 2 - 230, 40, 460, 74, 10); x.fill();
+  x.fillStyle = '#1a1206'; x.font = '700 46px "Chakra Petch", system-ui, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('JDC WEST 2027', W / 2, 79);
+  for (let i = 0; i < 9; i++) { const lx = 80 + i * (W - 160) / 8; x.fillStyle = FIND.accents[(i * 3) % FIND.accents.length]; x.globalAlpha = .9; x.beginPath(); x.arc(lx, 14, 9, 0, 7); x.fill(); x.globalAlpha = .12; x.beginPath(); x.moveTo(lx, 14); x.lineTo(lx - 70, TOP); x.lineTo(lx + 70, TOP); x.closePath(); x.fill(); }
+  x.globalAlpha = 1;
+  L.figures.forEach(f => findDrawFig(x, f));
+}
+
+function mountFindit(card, p, opts = {}) {
+  const cfg = p.config || {}, L = findLayout(cfg), T = L.figures[L.target];
+  if (cfg.brief) card.appendChild(el('p', 'sub', cfg.brief));
+  const wanted = el('div', 'findwant');
+  const tc = el('canvas'); tc.width = 120; tc.height = 150; tc.setAttribute('aria-hidden', 'true');
+  wanted.append(tc, el('p', null, findDescribe(L.T)));
+  card.appendChild(wanted);
+  const status = el('div', 'meta'); card.appendChild(status);
+  const view = el('div', 'findview'); const cv = el('canvas'); cv.setAttribute('aria-label', 'Crowd scene. Tap the dancer you are looking for.'); cv.setAttribute('role', 'img');
+  const zb = el('div', 'findzoom');
+  const zin = el('button', null, '+'), zout = el('button', null, '−'), zfit = el('button', null, 'Fit');
+  [zin, zout, zfit].forEach(b => { b.type = 'button'; zb.appendChild(b); });
+  zin.setAttribute('aria-label', 'Zoom in'); zout.setAttribute('aria-label', 'Zoom out'); zfit.setAttribute('aria-label', 'Show the whole scene');
+  const lockMsg = el('div', 'findlock'); lockMsg.hidden = true;
+  view.append(cv, zb, lockMsg); card.appendChild(view);
+  const w = winCard('Found them'); card.appendChild(w.win);
+
+  // big "wanted" drawing of the target
+  const tx2 = tc.getContext('2d'); const sc = 2.25;
+  tx2.fillStyle = '#d9a86c'; tx2.beginPath(); tx2.roundRect(0, 0, 120, 150, 12); tx2.fill();
+  tx2.save(); tx2.scale(sc, sc);
+  findDrawFig(tx2, Object.assign({}, T, { x: 52 / sc, y: 140 / sc, s: 1, flip: 0 }));
+  tx2.restore();
+
+  let scale = 1, ox = 0, oy = 0, vw = 0, vh = 0, minScale = 1, previewDone = false, marks = [], busy = false, raf = 0, lt;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+  const isDone = () => opts.preview ? previewDone : !!solvedState(p, opts);
+  function clamp() {
+    const sw = L.W * scale, sh = L.H * scale;
+    ox = sw <= vw ? (vw - sw) / 2 : Math.min(0, Math.max(vw - sw, ox));
+    oy = sh <= vh ? (vh - sh) / 2 : Math.min(0, Math.max(vh - sh, oy));
+  }
+  function size() {
+    vw = view.clientWidth; vh = view.clientHeight; if (!vw || !vh) return;
+    cv.width = Math.round(vw * dpr); cv.height = Math.round(vh * dpr);
+    const fit = Math.min(vw / L.W, vh / L.H), first = minScale === 1 && scale === 1;
+    minScale = fit; if (first || scale < fit) { scale = fit; }
+    clamp(); draw();
+  }
+  function zoomAt(f, px, py) {
+    const ns = Math.max(minScale, Math.min(minScale * 7, scale * f));
+    ox = px - (px - ox) * (ns / scale); oy = py - (py - oy) * (ns / scale); scale = ns; clamp(); draw();
+  }
+  function draw() {
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => {
+      const x = cv.getContext('2d');
+      x.setTransform(1, 0, 0, 1, 0, 0); x.fillStyle = '#121620'; x.fillRect(0, 0, cv.width, cv.height);
+      x.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * ox, dpr * oy);
+      findDrawScene(x, L);
+      const now = performance.now(); marks = marks.filter(m => now - m.t < 900);
+      marks.forEach(m => { const a = 1 - (now - m.t) / 900; x.strokeStyle = `rgba(255,107,107,${a})`; x.lineWidth = 4 / scale; const r = 10 / scale; x.beginPath(); x.moveTo(m.x - r, m.y - r); x.lineTo(m.x + r, m.y + r); x.moveTo(m.x + r, m.y - r); x.lineTo(m.x - r, m.y + r); x.stroke(); });
+      if (isDone()) { const b = L.box; x.strokeStyle = '#5fd4a0'; x.lineWidth = 4 / scale; x.beginPath(); x.ellipse((b.x0 + b.x1) / 2 * L.W, (b.y0 + b.y1) / 2 * L.H, (b.x1 - b.x0) * L.W * .8, (b.y1 - b.y0) * L.H * .7, 0, 0, 7); x.stroke(); }
+      if (marks.length) draw();
+    });
+  }
+  async function guess(px, py) {
+    if (isDone() || busy) return;
+    const wx = (px - ox) / scale, wy = (py - oy) / scale, nx = wx / L.W, ny = wy / L.H;
+    if (nx < 0 || ny < 0 || nx > 1 || ny > 1) return;
+    const b = L.box, hit = nx >= b.x0 && nx <= b.x1 && ny >= b.y0 && ny <= b.y1;
+    if (opts.preview) {
+      if (hit) { previewDone = true; sync(); } else { marks.push({ x: wx, y: wy, t: performance.now() }); draw(); }
+      return;
+    }
+    if (!S.me) return;
+    const m = mineFor(p.id); if (m && ms(m.locked_until) > serverNow()) return;
+    busy = true;
+    try {
+      const res = await rpc('submit_find', { p_token: token, p_puzzle: p.id, p_x: nx, p_y: ny });
+      if (!res.correct) { marks.push({ x: wx, y: wy, t: performance.now() }); draw(); if (navigator.vibrate) { try { navigator.vibrate([30, 40, 30]); } catch (e) {} } }
+    } catch (e) { status.replaceChildren(el('span', null, e.message)); }
+    busy = false; await refresh();
+  }
+  // gestures: drag to pan, pinch / wheel / buttons to zoom, tap to guess
+  const pts = new Map(); let start = null, pinch = null, moved = false;
+  cv.addEventListener('pointerdown', e => {
+    cv.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
+    if (pts.size === 1) { start = { x: e.offsetX, y: e.offsetY, ox, oy, t: Date.now() }; moved = false; }
+    if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), s: scale }; moved = true; }
+  });
+  cv.addEventListener('pointermove', e => {
+    if (!pts.has(e.pointerId)) return; pts.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
+    if (pts.size === 2 && pinch) {
+      const [a, b] = [...pts.values()], d = Math.hypot(a.x - b.x, a.y - b.y);
+      zoomAt((pinch.s * d / pinch.d) / scale, (a.x + b.x) / 2, (a.y + b.y) / 2);
+    } else if (pts.size === 1 && start) {
+      const dx = e.offsetX - start.x, dy = e.offsetY - start.y;
+      if (Math.hypot(dx, dy) > 8) moved = true;
+      if (moved) { ox = start.ox + dx; oy = start.oy + dy; clamp(); draw(); }
+    }
+  });
+  const up = e => {
+    const wasTap = pts.size === 1 && start && !moved && Date.now() - start.t < 500;
+    pts.delete(e.pointerId);
+    if (pts.size < 2) pinch = null;
+    if (pts.size === 1) { const [a] = [...pts.values()]; start = { x: a.x, y: a.y, ox, oy, t: 0 }; moved = true; }
+    if (!pts.size) { if (wasTap) guess(e.offsetX, e.offsetY); start = null; }
+  };
+  cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', e => { pts.delete(e.pointerId); start = null; pinch = null; });
+  cv.addEventListener('wheel', e => { e.preventDefault(); zoomAt(e.deltaY < 0 ? 1.2 : 1 / 1.2, e.offsetX, e.offsetY); }, { passive: false });
+  zin.onclick = () => zoomAt(1.6, vw / 2, vh / 2); zout.onclick = () => zoomAt(1 / 1.6, vw / 2, vh / 2); zfit.onclick = () => { scale = minScale; clamp(); draw(); };
+
+  function sync() {
+    const done = isDone(), r = !opts.preview && S.me ? resultFor(p.id, S.me) : null, m = !opts.preview ? mineFor(p.id) : null;
+    status.replaceChildren(el('span', null, opts.preview ? 'Preview' : 'Wrong taps '), opts.preview ? '' : el('b', null, String(r ? r.attempts : 0)));
+    w.win.hidden = !done;
+    if (done) {
+      if (opts.preview) fillWin(w, p, opts, true);
+      else { fillWin(w, p, opts); if (r) w.stamp.textContent = `${r.attempts + 1} ${r.attempts ? 'taps' : 'tap'} · ` + w.stamp.textContent; }
+    }
+    clearTimeout(lt);
+    const until = m && ms(m.locked_until), left = until ? until - serverNow() : 0;
+    lockMsg.hidden = !(left > 0 && !done);
+    if (left > 0 && !done) { lockMsg.textContent = `Too many wrong taps. Wait ${Math.ceil(left / 1000)}s.`; lt = setTimeout(sync, 250); }
+    draw();
+  }
+  card._sync = sync;
+  card._debug = () => ({ scale, ox, oy, box: L.box, W: L.W, H: L.H });
+  if (window.ResizeObserver) new ResizeObserver(size).observe(view);
+  requestAnimationFrame(() => { size(); sync(); });
+}
+
 /* ---------- riddle ---------- */
 function mountRiddle(card, p) {
   const P = p.config || {};
@@ -1036,7 +1280,7 @@ function mountRiddle(card, p) {
     form.hidden = msg.hidden = !!solved; win.hidden = !solved;
     if (solved) {
       const me = standings(p.id).solved.find(x => x.id === S.me);
-      winTxt.textContent = me && me.place ? `You finished ${ordinal(me.place)} and earned ${me.pts} ${me.pts === 1 ? 'point' : 'points'}. Keep the answer to yourself.` : 'Solved. Keep the answer to yourself.';
+      winTxt.textContent = me && me.place ? `You’re ${ordinal(me.place)} fastest so far (${me.pts} ${me.pts === 1 ? 'point' : 'points'}). Keep the answer to yourself.` : 'Solved. Keep the answer to yourself.';
       stamp.textContent = `${wrong + 1} ${wrong ? 'attempts' : 'attempt'} · ${fmtDur(ms(r.solved_at) - ms(r.opened_at))} · ${r.hint_used ? 'hint used' : 'no hint'}`;
     }
     lock(m && ms(m.locked_until));
@@ -1139,7 +1383,7 @@ function mountNonogram(card, p, opts = {}) {
     if (solved && opts.preview) { winTxt.textContent = 'Preview: every clue checks out. Nothing was recorded.'; stamp.textContent = ''; }
     else if (solved) {
       const r = resultFor(p.id, S.me), me = standings(p.id).solved.find(x => x.id === S.me);
-      winTxt.textContent = (me && me.place ? `You finished ${ordinal(me.place)} and earned ${me.pts} ${me.pts === 1 ? 'point' : 'points'}. ` : 'Solved. ') + 'DM Joaquin the room number privately.';
+      winTxt.textContent = (me && me.place ? `You’re ${ordinal(me.place)} fastest so far (${me.pts} ${me.pts === 1 ? 'point' : 'points'}). ` : 'Solved. ') + 'DM Joaquin the room number privately.';
       stamp.textContent = 'Solved in ' + fmtDur(ms(r.solved_at) - ms(r.opened_at));
     }
   }
@@ -1230,7 +1474,7 @@ function bootPreview(P) {
   const r = el('div', 'row wrap'); r.append(el('span', 'chip live', (TYPE_LABEL[P.type] || P.type) + ' · preview'), el('span', 'legend', 'Exactly how challengers will see it. Nothing is recorded.'));
   v.append(r, el('h2', null, P.title));
   const card = el('div', 'card'); card.id = 'player'; v.appendChild(card);
-  const mount = { nonogram: mountNonogram, sudoku: mountSudoku, wordsearch: mountWordsearch }[P.type];
+  const mount = { nonogram: mountNonogram, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit }[P.type];
   if (mount) { store.set('jdc-nono-preview-' + P.id, null); mount(card, P, { preview: true }); }
   else card.appendChild(el('p', 'sub', 'No preview for this puzzle type yet.'));
   const again = el('button', 'btn small', 'Start over'); again.type = 'button'; again.onclick = () => bootPreview(P);
