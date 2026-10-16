@@ -206,6 +206,20 @@ form.ans input:disabled { opacity: .5; }
 .spotview.zoomed canvas { touch-action: none; }
 .spottag { position: absolute; left: 8px; top: 8px; font: 700 13px var(--mono); color: var(--ink); background: rgba(18,22,32,.85); border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; pointer-events: none; }
 .spotzoom { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+/* minesweeper */
+.ms { display: grid; margin: 0 auto; width: max-content; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; border: 2px solid var(--line); border-radius: 6px; overflow: hidden; }
+.mc { border: 0; padding: 0; display: grid; place-items: center; font: 700 var(--mfs, 16px) var(--mono); background: #3a4560; box-shadow: inset 0 -2px 0 rgba(0,0,0,.25), inset 0 2px 0 rgba(255,255,255,.08); border-right: 1px solid #2a3245; border-bottom: 1px solid #2a3245; cursor: pointer; color: var(--ink); touch-action: manipulation; }
+.mc.open { background: var(--panel2); box-shadow: none; cursor: default; }
+.mc.open.chord { cursor: pointer; }
+.mc.flag::after { content: ""; width: 42%; height: 46%; background: var(--signal); clip-path: polygon(0 0, 100% 30%, 0 60%, 0 100%, 10% 100%, 10% 0); }
+.mc.mine { background: #3b2330; }
+.mc.mine::after { content: ""; width: 46%; height: 46%; border-radius: 50%; background: #1d1a24; box-shadow: 0 0 0 2px #ff6b6b; }
+.mc.boom { background: var(--bad); }
+.mc.n1 { color: #7fb2ff; } .mc.n2 { color: #5fd4a0; } .mc.n3 { color: #ff6b6b; } .mc.n4 { color: #b59cff; }
+.mc.n5 { color: #ff9d3c; } .mc.n6 { color: #5fd0e0; } .mc.n7 { color: var(--ink); } .mc.n8 { color: var(--muted); }
+.ms.done .mc { cursor: default; }
+.msbar { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; align-items: center; }
+.msboom { text-align: center; color: var(--bad); font: 600 14px var(--mono); min-height: 18px; }
 /* practice */
 .ticks { display: flex; flex-direction: column; gap: 8px; }
 .tick { display: grid; grid-template-columns: 1fr 52px 96px; gap: 8px; align-items: stretch; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 8px; min-width: 0; }
@@ -262,8 +276,8 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const RANK_PTS = [5, 3, 2, 1];   // 1st..4th on each puzzle
 const FINISH_PTS = 1;            // any later solve
 const POLL_MS = 12000;
-const TYPE_LABEL = { nonogram: 'Nonogram', riddle: 'Riddle', sudoku: 'Sudoku', wordsearch: 'Word search', findit: 'Find it', spotdiff: 'Spot the difference' };
-const TRIES_TYPES = new Set(['riddle', 'findit', 'spotdiff']);   // puzzle types where wrong attempts count
+const TYPE_LABEL = { nonogram: 'Nonogram', riddle: 'Riddle', sudoku: 'Sudoku', wordsearch: 'Word search', findit: 'Find it', spotdiff: 'Spot the difference', minesweeper: 'Minesweeper' };
+const TRIES_TYPES = new Set(['riddle', 'findit', 'spotdiff', 'minesweeper']);   // puzzle types where wrong attempts count
 const AV_COLORS = ['#ff9d3c', '#5fd4a0', '#7fb2ff', '#f5c84c', '#ff7eb6', '#b59cff', '#5fd0e0', '#d9925b'];
 
 /* ---------- tiny helpers ---------- */
@@ -360,7 +374,8 @@ function standingsList(p, showTrying) {
   const ul = el('ul', 'list');
   solved.forEach(x => {
     const bits = ['took ' + fmtDur(ms(x.r.solved_at) - ms(x.r.opened_at))];
-    if (TRIES_TYPES.has(p.type)) bits.push(`${x.r.attempts + 1} ${x.r.attempts ? 'tries' : 'try'}`);
+    if (p.type === 'minesweeper') bits.push(`${x.r.attempts} ${x.r.attempts === 1 ? 'boom' : 'booms'}`);
+    else if (TRIES_TYPES.has(p.type)) bits.push(`${x.r.attempts + 1} ${x.r.attempts ? 'tries' : 'try'}`);
     if (x.r.hint_used) bits.push('hint');
     if (x.guest) bits.unshift('guest');
     ul.appendChild(personRow(x.place, personOf(x.id), bits.join(' · '), x.guest ? '' : '+' + x.pts, x.guest ? '' : 'PTS'));
@@ -476,7 +491,7 @@ function renderToday() {
     if (livePuzzles().length > 1) v.appendChild(el('p', 'legend', `${livePuzzles().length - 1} more live in History`));
     const card = el('div', 'card'); card.id = 'player'; v.appendChild(card);
     if (!S.me) card.appendChild(el('p', 'sub', 'Coach view: you can try the puzzle, but nothing is recorded.'));
-    const mount = { nonogram: mountNonogram, riddle: mountRiddle, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff }[p.type];
+    const mount = { nonogram: mountNonogram, riddle: mountRiddle, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper }[p.type];
     if (mount) mount(card, p); else card.appendChild(el('p', 'sub', 'This puzzle type needs an app update. Refresh the page, or tell Joaquin.'));
     const side = el('div', 'card'); side.id = 'todaySide'; v.appendChild(side);
     if (S.me) rpc('open_puzzle', { p_token: token, p_puzzle: p.id }).then(refresh).catch(() => {});
@@ -758,6 +773,7 @@ function renderPreview(panel, p) {
   else if (p.type === 'wordsearch') mountWordsearch(body, p, { preview: true });
   else if (p.type === 'findit') mountFindit(body, p, { preview: true });
   else if (p.type === 'spotdiff') mountSpotdiff(body, p, { preview: true });
+  else if (p.type === 'minesweeper') mountMinesweeper(body, p, { preview: true });
   else if (p.type === 'riddle') {
     const cfg = p.config || {};
     if (cfg.brief) body.appendChild(el('p', 'sub', cfg.brief));
@@ -1485,7 +1501,7 @@ function mountSpotdiff(card, p, opts = {}) {
   function sync() {
     const done = isDone(), r = !opts.preview && S.me ? resultFor(p.id, S.me) : null, m = !opts.preview ? mineFor(p.id) : null;
     const f = foundList().length;
-    status.replaceChildren(el('span', null, 'Found '), el('b', null, `${done ? N : f} / ${N}`), opts.preview ? '' : el('span', null, ' · Wrong taps '), opts.preview ? '' : el('b', null, String(r ? r.attempts : 0)));
+    { const t = el('span'); t.append('Found ', el('b', null, `${done ? N : f} / ${N}`)); if (!opts.preview) t.append(' · Wrong taps ', el('b', null, String(r ? r.attempts : 0))); status.replaceChildren(t); }
     w.win.hidden = !done;
     if (done) { fillWin(w, p, opts, true); if (r) w.stamp.textContent = `${r.attempts} wrong ${r.attempts === 1 ? 'tap' : 'taps'} · ` + w.stamp.textContent; }
     clearTimeout(lt);
@@ -1498,6 +1514,108 @@ function mountSpotdiff(card, p, opts = {}) {
   card._debug = () => ({ scale, ox, oy, W: L.W, H: L.H, diffs: L.diffs.map(d => d.box) });
   if (window.ResizeObserver) new ResizeObserver(size).observe(panes[0].v);
   requestAnimationFrame(() => { size(); sync(); });
+}
+
+/* ---------- minesweeper ---------- */
+function mountMinesweeper(card, p, opts = {}) {
+  const cfg = p.config || {}, W = cfg.w, H = cfg.h, N = W * H, start = cfg.start;
+  // decode the mine layout
+  const raw = atob(cfg.m || ''), mine = new Array(N).fill(false);
+  for (let k = 0; k < raw.length; k++) { const byte = raw.charCodeAt(k) ^ ((cfg.k + 31 * k) & 255); for (let b = 0; b < 8; b++) { const i = k * 8 + b; if (i < N) mine[i] = !!(byte & (128 >> b)); } }
+  const NB = Array.from({ length: N }, (_, i) => { const r = Math.floor(i / W), c = i % W, out = []; for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) { if ((dr || dc) && r + dr >= 0 && r + dr < H && c + dc >= 0 && c + dc < W) out.push((r + dr) * W + c + dc); } return out; });
+  const num = NB.map(ns => ns.filter(j => mine[j]).length);
+  const totalMines = mine.filter(Boolean).length, safeCount = N - totalMines;
+  const LK = (opts.preview ? 'jdc-ms-preview-' : 'jdc-ms-') + p.id;
+  let open = new Array(N).fill(false), flag = new Array(N).fill(false), booms = 0, flagMode = false, boomAt = -1, previewDone = false, sending = false;
+  function openFrom(i) { const st = [i]; while (st.length) { const k = st.pop(); if (open[k] || flag[k]) continue; open[k] = true; if (!num[k]) NB[k].forEach(j => { if (!open[j] && !mine[j]) st.push(j); }); } }
+  function freshBoard() { open = new Array(N).fill(false); flag = new Array(N).fill(false); openFrom(start); }
+  freshBoard();
+  if (!opts.preview) { try { const sv = JSON.parse(store.get(LK) || 'null'); if (sv && sv.o && sv.o.length === N) { open = sv.o.split('').map(x => x === '1'); flag = sv.f.split('').map(x => x === '1'); booms = sv.b | 0; } } catch (e) {} }
+  const save = () => { if (!opts.preview) store.set(LK, JSON.stringify({ o: open.map(x => x ? 1 : 0).join(''), f: flag.map(x => x ? 1 : 0).join(''), b: booms })); };
+  const isDone = () => opts.preview ? previewDone : !!solvedState(p, opts);
+
+  if (cfg.brief) card.appendChild(el('p', 'sub', cfg.brief));
+  const status = el('div', 'meta'); card.appendChild(status);
+  const wrap = el('div', 'board-wrap'); const board = el('div', 'ms'); wrap.appendChild(board); card.appendChild(wrap);
+  const boomMsg = el('p', 'msboom'); boomMsg.setAttribute('aria-live', 'polite'); card.appendChild(boomMsg);
+  const bar = el('div', 'msbar'); card.appendChild(bar);
+  const seg = el('div', 'seg'); const bDig = el('button', null, 'Dig'), bFlag = el('button', null, 'Flag');
+  [bDig, bFlag].forEach(b => { b.type = 'button'; seg.appendChild(b); });
+  bDig.onclick = () => { flagMode = false; draw(); }; bFlag.onclick = () => { flagMode = true; draw(); };
+  bar.append(seg, el('span', 'legend', 'Long-press or right-click also flags'));
+  const w = winCard('Field cleared'); card.appendChild(w.win);
+
+  const cells = [];
+  function build() {
+    const s = Math.max(24, Math.min(36, Math.floor(((wrap.clientWidth || 330) - 4) / W)));
+    board.style.gridTemplateColumns = `repeat(${W}, ${s}px)`; board.style.gridAutoRows = s + 'px'; board.style.setProperty('--mfs', Math.round(s * .55) + 'px');
+    board.replaceChildren(); cells.length = 0;
+    for (let i = 0; i < N; i++) { const b = el('button', 'mc'); b.type = 'button'; b.dataset.i = i; b.setAttribute('aria-label', `Row ${Math.floor(i / W) + 1}, column ${i % W + 1}`); board.appendChild(b); cells.push(b); }
+    draw();
+  }
+  function draw() {
+    const done = isDone();
+    cells.forEach((b, i) => {
+      const o = open[i] || (done && !mine[i]);
+      b.className = 'mc' + (o ? ' open' : '') + (o && num[i] ? ' n' + num[i] : '') + (!o && (flag[i] || (done && mine[i])) ? ' flag' : '') + (i === boomAt ? ' mine boom' : '');
+      if (o && num[i]) { b.classList.add('chord'); b.textContent = String(num[i]); } else b.textContent = '';
+    });
+    board.classList.toggle('done', done);
+    bDig.setAttribute('aria-pressed', String(!flagMode)); bFlag.setAttribute('aria-pressed', String(flagMode));
+    bar.hidden = done; w.win.hidden = !done;
+    const flags = flag.filter(Boolean).length;
+    if (!sending) { const t = el('span'); t.append('Mines left ', el('b', null, String(done ? 0 : totalMines - flags)), ' · Booms ', el('b', null, String(booms))); status.replaceChildren(t); }
+    if (done) { fillWin(w, p, opts, previewDone); if (!opts.preview) w.stamp.textContent = `${booms} ${booms === 1 ? 'boom' : 'booms'} · ` + w.stamp.textContent; boomMsg.textContent = ''; }
+  }
+  function boom(i) {
+    booms++; boomAt = i; draw();
+    boomMsg.textContent = 'Boom! The board resets. Your clock keeps running.';
+    if (navigator.vibrate) { try { navigator.vibrate([60, 40, 60]); } catch (e) {} }
+    busy = true;
+    setTimeout(() => { boomAt = -1; freshBoard(); save(); busy = false; draw(); }, 900);
+  }
+  let busy = false;
+  function dig(i) {
+    if (busy || isDone() || flag[i]) return;
+    if (open[i]) {   // chord: number with all its flags placed opens the rest
+      const ns = NB[i], f = ns.filter(j => flag[j]).length;
+      if (!num[i] || f !== num[i]) return;
+      const hit = ns.find(j => !flag[j] && !open[j] && mine[j]);
+      if (hit != null) return boom(hit);
+      ns.forEach(j => { if (!flag[j] && !open[j]) openFrom(j); });
+    } else {
+      if (mine[i]) return boom(i);
+      openFrom(i);
+    }
+    save(); draw(); check();
+  }
+  function toggleFlag(i) { if (busy || isDone() || open[i]) return; flag[i] = !flag[i]; if (navigator.vibrate) { try { navigator.vibrate(12); } catch (e) {} } save(); draw(); }
+  async function check() {
+    if (open.filter(Boolean).length !== safeCount) return;
+    if (opts.preview) { previewDone = true; draw(); return; }
+    if (!S.me || sending || isDone()) return;
+    sending = true;
+    await submitGrid(p, { revealed: open.map(x => x ? 1 : 0).join(''), booms }, status);
+    sending = false; draw();
+  }
+  // input: tap = dig (or flag in Flag mode), long-press / right-click = flag
+  let press = null;
+  board.addEventListener('pointerdown', e => {
+    const t = e.target.closest('.mc'); if (!t || e.button === 2) return;
+    const i = +t.dataset.i;
+    press = { i, fired: false, timer: setTimeout(() => { if (press && press.i === i) { press.fired = true; toggleFlag(i); } }, 380) };
+  });
+  const cancel = () => { if (press) { clearTimeout(press.timer); press = null; } };
+  board.addEventListener('pointerup', e => {
+    const t = e.target.closest('.mc'); if (!press) return;
+    const { i, fired } = press; cancel();
+    if (fired || !t || +t.dataset.i !== i) return;
+    flagMode && !open[i] ? toggleFlag(i) : dig(i);
+  });
+  board.addEventListener('pointerleave', cancel); board.addEventListener('pointercancel', cancel);
+  board.addEventListener('contextmenu', e => { e.preventDefault(); const t = e.target.closest('.mc'); cancel(); if (t) toggleFlag(+t.dataset.i); });
+  card._sync = draw;
+  requestAnimationFrame(() => { build(); check(); });
 }
 
 /* ---------- riddle ---------- */
@@ -1726,7 +1844,7 @@ function bootPreview(P) {
   const r = el('div', 'row wrap'); r.append(el('span', 'chip live', (TYPE_LABEL[P.type] || P.type) + ' · preview'), el('span', 'legend', 'Exactly how challengers will see it. Nothing is recorded.'));
   v.append(r, el('h2', null, P.title));
   const card = el('div', 'card'); card.id = 'player'; v.appendChild(card);
-  const mount = { nonogram: mountNonogram, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff }[P.type];
+  const mount = { nonogram: mountNonogram, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper }[P.type];
   if (mount) { store.set('jdc-nono-preview-' + P.id, null); mount(card, P, { preview: true }); }
   else card.appendChild(el('p', 'sub', 'No preview for this puzzle type yet.'));
   const again = el('button', 'btn small', 'Start over'); again.type = 'button'; again.onclick = () => bootPreview(P);
