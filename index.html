@@ -220,6 +220,30 @@ form.ans input:disabled { opacity: .5; }
 .ms.done .mc { cursor: default; }
 .msbar { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; align-items: center; }
 .msboom { text-align: center; color: var(--bad); font: 600 14px var(--mono); min-height: 18px; }
+/* story */
+.stclock { display: flex; align-items: center; gap: 10px; font: 13px var(--mono); color: var(--muted); }
+.stclock b { color: var(--ink); font-weight: 700; font-size: 15px; }
+.stbar { flex: 1; height: 6px; border-radius: 999px; background: var(--bg); overflow: hidden; border: 1px solid var(--line); }
+.stbar i { display: block; height: 100%; background: var(--signal); transition: width .3s; }
+.stbar.low i { background: var(--bad); }
+.stbag { display: grid; gap: 8px; }
+.stbagb { justify-self: start; font: 600 13px var(--mono); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; background: var(--bg); color: var(--ink); cursor: pointer; }
+.stinv { display: flex; flex-wrap: wrap; gap: 6px; }
+.stinv span { font: 12px var(--mono); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; color: var(--ink); background: var(--bg); }
+.stinv .none { color: var(--muted); border-style: dashed; }
+.sttext { font-family: var(--verse); font-size: 17px; line-height: 1.65; white-space: pre-line; animation: stIn .35s ease-out; }
+@keyframes stIn { from { opacity: 0; transform: translateY(4px); } }
+.stchoices { display: flex; flex-direction: column; gap: 8px; }
+.stchoices button { text-align: left; border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 10px; padding: 12px 14px; font: 600 15px var(--body); cursor: pointer; display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+.stchoices button:hover:not(:disabled) { border-color: var(--signal); }
+.stchoices button small { font: 500 12px var(--mono); color: var(--muted); white-space: nowrap; }
+.stchoices button:disabled { opacity: .5; cursor: default; }
+.stchoices .lockb::before { content: "⌗ "; color: var(--signal); }
+.sttoast { font-size: 14px; color: var(--ok); background: var(--ok-dim); border-radius: 8px; padding: 8px 12px; }
+.stbad { border: 1px solid var(--bad); background: rgba(255,107,107,.08); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.stbad h2 { color: var(--bad); }
+.stlock { border: 1px dashed var(--signal); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+@media (prefers-reduced-motion: reduce) { .sttext { animation: none; } }
 /* practice */
 .ticks { display: flex; flex-direction: column; gap: 8px; }
 .tick { display: grid; grid-template-columns: 1fr 52px 96px; gap: 8px; align-items: stretch; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 8px; min-width: 0; }
@@ -276,8 +300,9 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const RANK_PTS = [5, 3, 2, 1];   // 1st..4th on each puzzle
 const FINISH_PTS = 1;            // any later solve
 const POLL_MS = 12000;
-const TYPE_LABEL = { nonogram: 'Nonogram', riddle: 'Riddle', sudoku: 'Sudoku', wordsearch: 'Word search', findit: 'Find it', spotdiff: 'Spot the difference', minesweeper: 'Minesweeper' };
-const TRIES_TYPES = new Set(['riddle', 'findit', 'spotdiff', 'minesweeper']);   // puzzle types where wrong attempts count
+const TYPE_LABEL = { nonogram: 'Nonogram', riddle: 'Riddle', sudoku: 'Sudoku', wordsearch: 'Word search', findit: 'Find it', spotdiff: 'Spot the difference', minesweeper: 'Minesweeper', story: 'Story' };
+const TRIES_TYPES = new Set(['riddle', 'findit', 'spotdiff', 'minesweeper', 'story']);
+const FAIL_WORDS = { minesweeper: ['boom', 'booms'], story: ['fail', 'fails'] };   // types where attempts are failures, not guesses   // puzzle types where wrong attempts count
 const AV_COLORS = ['#ff9d3c', '#5fd4a0', '#7fb2ff', '#f5c84c', '#ff7eb6', '#b59cff', '#5fd0e0', '#d9925b'];
 
 /* ---------- tiny helpers ---------- */
@@ -374,7 +399,7 @@ function standingsList(p, showTrying) {
   const ul = el('ul', 'list');
   solved.forEach(x => {
     const bits = ['took ' + fmtDur(ms(x.r.solved_at) - ms(x.r.opened_at))];
-    if (p.type === 'minesweeper') bits.push(`${x.r.attempts} ${x.r.attempts === 1 ? 'boom' : 'booms'}`);
+    if (FAIL_WORDS[p.type]) bits.push(`${x.r.attempts} ${FAIL_WORDS[p.type][x.r.attempts === 1 ? 0 : 1]}`);
     else if (TRIES_TYPES.has(p.type)) bits.push(`${x.r.attempts + 1} ${x.r.attempts ? 'tries' : 'try'}`);
     if (x.r.hint_used) bits.push('hint');
     if (x.guest) bits.unshift('guest');
@@ -491,7 +516,7 @@ function renderToday() {
     if (livePuzzles().length > 1) v.appendChild(el('p', 'legend', `${livePuzzles().length - 1} more live in History`));
     const card = el('div', 'card'); card.id = 'player'; v.appendChild(card);
     if (!S.me) card.appendChild(el('p', 'sub', 'Coach view: you can try the puzzle, but nothing is recorded.'));
-    const mount = { nonogram: mountNonogram, riddle: mountRiddle, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper }[p.type];
+    const mount = { nonogram: mountNonogram, riddle: mountRiddle, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper, story: mountStory }[p.type];
     if (mount) mount(card, p); else card.appendChild(el('p', 'sub', 'This puzzle type needs an app update. Refresh the page, or tell Joaquin.'));
     const side = el('div', 'card'); side.id = 'todaySide'; v.appendChild(side);
     if (S.me) rpc('open_puzzle', { p_token: token, p_puzzle: p.id }).then(refresh).catch(() => {});
@@ -774,6 +799,7 @@ function renderPreview(panel, p) {
   else if (p.type === 'findit') mountFindit(body, p, { preview: true });
   else if (p.type === 'spotdiff') mountSpotdiff(body, p, { preview: true });
   else if (p.type === 'minesweeper') mountMinesweeper(body, p, { preview: true });
+  else if (p.type === 'story') mountStory(body, p, { preview: true });
   else if (p.type === 'riddle') {
     const cfg = p.config || {};
     if (cfg.brief) body.appendChild(el('p', 'sub', cfg.brief));
@@ -1618,6 +1644,144 @@ function mountMinesweeper(card, p, opts = {}) {
   requestAnimationFrame(() => { build(); check(); });
 }
 
+/* ---------- story (text RPG) ---------- */
+async function storyUnseal(b64, salt, answer) {
+  if (!window.crypto || !crypto.subtle) throw new Error('This browser can’t open sealed parts of the story.');
+  const enc = new TextEncoder(), key = new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(salt + answer)));
+  const data = Uint8Array.from(atob(b64), c => c.charCodeAt(0)), out = new Uint8Array(data.length);
+  for (let blk = 0; blk * 32 < data.length; blk++) {
+    const seed = new Uint8Array(key.length + 4); seed.set(key); new DataView(seed.buffer).setUint32(key.length, blk);
+    const ks = new Uint8Array(await crypto.subtle.digest('SHA-256', seed));
+    for (let j = 0; j < 32 && blk * 32 + j < data.length; j++) out[blk * 32 + j] = data[blk * 32 + j] ^ ks[j];
+  }
+  const txt = new TextDecoder().decode(out);
+  return txt.startsWith('OK:') ? JSON.parse(txt.slice(3)) : null;
+}
+function mountStory(card, p, opts = {}) {
+  const cfg = p.config || {}, salt = cfg.salt || '', clockCfg = cfg.clock || { start: 0, limit: 0 };
+  const LK = (opts.preview ? 'jdc-story-preview-' : 'jdc-story-') + p.id;
+  const norm = (s, num) => num ? s.replace(/\D/g, '') : s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9 ]/g, ' ').replace(/\b(a|an|the|my|your)\b/g, ' ').replace(/\s+/g, '').replace(/s$/, '');
+  const hash = s => { let h = 0x811c9dc5; for (const ch of salt + s) { h ^= ch.charCodeAt(0); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16); };
+  const fresh = () => ({ node: cfg.start, inv: [], clock: clockCfg.start, cp: null, fails: 0, wrong: 0, extra: {}, lockUntil: {}, ended: false });
+  let st = fresh(), previewDone = false, sending = false, toast = '', openLock = null, lockMsg = '', bagOpen = false;
+  if (!opts.preview) { try { const sv = JSON.parse(store.get(LK) || 'null'); if (sv && sv.node) st = Object.assign(fresh(), sv); } catch (e) {} }
+  if (!st.cp) st.cp = { node: cfg.start, inv: [], clock: clockCfg.start };
+  const save = () => { if (!opts.preview) store.set(LK, JSON.stringify(st)); };
+  const nodes = () => Object.assign({}, cfg.nodes, st.extra);
+  const isDone = () => opts.preview ? previewDone : !!solvedState(p, opts);
+  const fmtClock = m => { const h = Math.floor(m / 60) % 24, mm = String(m % 60).padStart(2, '0'); return `${h % 12 || 12}:${mm} ${h < 12 ? 'AM' : 'PM'}`; };
+
+  if (cfg.brief) card.appendChild(el('p', 'sub', cfg.brief));
+  const head = el('div', 'stack'); head.style.gap = '8px'; card.appendChild(head);
+  const body = el('div', 'stack'); card.appendChild(body);
+  const w = winCard('Story complete'); card.appendChild(w.win);
+
+  function go(to) {
+    const ns = nodes(), n = ns[to];
+    st.node = to; openLock = null; lockMsg = '';
+    if (n && n.checkpoint) st.cp = { node: to, inv: st.inv.slice(), clock: st.clock };
+    if (n && (n.ending === 'bad' || n.ending === 'timeout')) st.fails++;
+    if (n && n.ending === 'good') finish();
+    save(); draw(); window.scrollTo({ top: card.getBoundingClientRect().top + window.scrollY - 80, behavior: 'smooth' });
+  }
+  function choose(ch) {
+    if (isDone()) return;
+    toast = ch.toast || (ch.gives ? `Added to your bag: ${ch.gives}` : '');
+    if (ch.gives && !st.inv.includes(ch.gives)) st.inv.push(ch.gives);
+    if (ch.takes) st.inv = st.inv.filter(x => x !== ch.takes);
+    st.clock += ch.cost || 0;
+    if (clockCfg.limit && st.clock >= clockCfg.limit) { st.clock = clockCfg.limit; toast = ''; return go(cfg.timeout); }
+    go(ch.to);
+  }
+  async function tryLock(ch, raw) {
+    const lk = ch.lock, key = st.node + '>' + ch.to, until = st.lockUntil[key] || 0;
+    if (Date.now() < until) return;
+    const a = norm(raw, lk.numeric); if (!a) return;
+    let ok = false;
+    if (lk.sealed) {
+      try { const part = await storyUnseal(lk.sealed, salt, a); if (part) { Object.assign(st.extra, part); ok = true; } } catch (e) { lockMsg = e.message; draw(); return; }
+    } else ok = (lk.answers || []).includes(hash(a));
+    if (ok) { toast = 'Unlocked.'; return choose(Object.assign({}, ch, { toast: 'Unlocked.' })); }
+    st.wrong++; lockMsg = 'That didn’t open it.';
+    st.tries = st.tries || {}; st.tries[key] = (st.tries[key] || 0) + 1;
+    if (st.tries[key] % 3 === 0) st.lockUntil[key] = Date.now() + 20000;
+    save(); draw();
+  }
+  async function finish() {
+    if (opts.preview) { previewDone = true; return; }
+    if (!S.me || sending || isDone()) return;
+    const m = /Completion code:\s*([A-Za-z0-9-]+)/.exec((nodes()[st.node] || {}).text || '');
+    sending = true;
+    const statusEl = el('span');
+    await submitGrid(p, { code: m ? m[1] : '', fails: st.fails }, statusEl);
+    sending = false; draw();
+  }
+  function back(toStart) {
+    if (toStart) { const keep = { fails: st.fails, wrong: st.wrong, extra: st.extra }; st = Object.assign(fresh(), keep); st.cp = { node: cfg.start, inv: [], clock: clockCfg.start }; }
+    else { st.node = st.cp.node; st.inv = st.cp.inv.slice(); st.clock = st.cp.clock; }
+    toast = ''; openLock = null; save(); draw();
+  }
+  function draw() {
+    const ns = nodes(), n = ns[st.node] || { text: 'This part of the story is missing.' }, done = isDone() || (opts.preview && previewDone);
+    // header: clock + bag
+    const total = clockCfg.limit - clockCfg.start, left = Math.max(0, clockCfg.limit - st.clock);
+    const ck = el('div', 'stclock'); ck.append(el('b', null, fmtClock(st.clock)));
+    const bar = el('div', 'stbar' + (left / total < .25 ? ' low' : '')); const fill = el('i'); fill.style.width = (100 * left / total) + '%'; bar.appendChild(fill);
+    ck.append(bar, el('span', null, `${Math.floor(left / 60)}h ${String(left % 60).padStart(2, '0')}m left`));
+    const bagWrap = el('div', 'stbag');
+    const bagBtn = el('button', 'stbagb', `${bagOpen ? 'Close' : 'Open'} bag · ${st.inv.length} ${st.inv.length === 1 ? 'item' : 'items'}`); bagBtn.type = 'button'; bagBtn.setAttribute('aria-expanded', String(bagOpen));
+    bagBtn.onclick = () => { bagOpen = !bagOpen; draw(); };
+    bagWrap.appendChild(bagBtn);
+    if (bagOpen) { const inv = el('div', 'stinv'); if (st.inv.length) st.inv.forEach(x => inv.appendChild(el('span', null, x))); else inv.appendChild(el('span', 'none', 'Bag is empty')); bagWrap.appendChild(inv); }
+    const meta = el('div', 'meta'); const mt = el('span'); mt.append('Fails ', el('b', null, String(st.fails)), ' · Wrong codes ', el('b', null, String(st.wrong))); meta.appendChild(mt);
+    head.replaceChildren(ck, bagWrap, meta);
+    // scene
+    const parts = [];
+    if (toast) parts.push(el('p', 'sttoast', toast));
+    parts.push(el('p', 'sttext', n.text));
+    if (n.ending === 'bad' || n.ending === 'timeout') {
+      const box = el('div', 'stbad'); box.appendChild(el('h2', null, n.ending === 'timeout' ? 'Out of time' : 'Caught'));
+      box.appendChild(el('p', 'sub', n.ending === 'timeout' ? 'That’s a fail. You start over from 2:00 AM with an empty bag.' : 'That’s a fail. You go back to your last checkpoint, with the bag and clock you had there.'));
+      const b = el('button', 'btn primary', n.ending === 'timeout' ? 'Start the night over' : 'Back to checkpoint'); b.type = 'button'; b.onclick = () => back(n.ending === 'timeout');
+      box.appendChild(b); parts.push(box);
+    } else if (!n.ending && !done) {
+      const list = el('div', 'stchoices');
+      (n.choices || []).forEach(ch => {
+        if (ch.hideIfHave && st.inv.includes(ch.hideIfHave)) return;
+        const need = ch.needs && !st.inv.includes(ch.needs);
+        const b = el('button', ch.lock ? 'lockb' : ''); b.type = 'button';
+        b.append(el('span', null, ch.label), el('small', null, need ? `needs ${ch.needs}` : ch.cost ? `+${ch.cost} min` : ''));
+        b.disabled = need;
+        b.onclick = () => { toast = ''; if (ch.lock) { openLock = openLock === ch ? null : ch; lockMsg = ''; draw(); } else choose(ch); };
+        list.appendChild(b);
+        if (ch.lock && openLock === ch) {
+          const f = el('form', 'stlock'); f.autocomplete = 'off';
+          f.appendChild(el('p', 'ask', ch.lock.prompt));
+          const row = el('div', 'ans'); row.className = 'ans'; row.style.display = 'flex'; row.style.gap = '8px';
+          const inp = el('input'); inp.type = 'text'; inp.id = 'lock-' + st.node; inp.placeholder = ch.lock.placeholder || 'Answer'; inp.setAttribute('aria-label', ch.lock.prompt);
+          if (ch.lock.numeric) inp.inputMode = 'numeric'; inp.style.flex = '1'; inp.style.minWidth = '0';
+          const go2 = el('button', 'btn primary', 'Enter'); go2.type = 'submit';
+          row.append(inp, go2); f.appendChild(row);
+          const key = st.node + '>' + ch.to, until = st.lockUntil[key] || 0;
+          const msg = el('p', 'msg' + (lockMsg ? ' bad' : ''), Date.now() < until ? `Too many wrong codes. Try again in ${Math.ceil((until - Date.now()) / 1000)}s.` : lockMsg);
+          f.appendChild(msg);
+          f.onsubmit = e => { e.preventDefault(); tryLock(ch, inp.value); };
+          list.appendChild(f);
+          setTimeout(() => inp.focus({ preventScroll: true }), 0);
+          if (Date.now() < until) setTimeout(draw, 1000);
+        }
+      });
+      parts.push(list);
+    }
+    body.replaceChildren(...parts);
+    w.win.hidden = !done;
+    if (done) { fillWin(w, p, opts, true); if (!opts.preview) w.stamp.textContent = `${st.fails} ${st.fails === 1 ? 'fail' : 'fails'} · ` + w.stamp.textContent; }
+  }
+  card._sync = draw;
+  draw();
+  if ((nodes()[st.node] || {}).ending === 'good') finish();
+}
+
 /* ---------- riddle ---------- */
 function mountRiddle(card, p) {
   const P = p.config || {};
@@ -1844,7 +2008,7 @@ function bootPreview(P) {
   const r = el('div', 'row wrap'); r.append(el('span', 'chip live', (TYPE_LABEL[P.type] || P.type) + ' · preview'), el('span', 'legend', 'Exactly how challengers will see it. Nothing is recorded.'));
   v.append(r, el('h2', null, P.title));
   const card = el('div', 'card'); card.id = 'player'; v.appendChild(card);
-  const mount = { nonogram: mountNonogram, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper }[P.type];
+  const mount = { nonogram: mountNonogram, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper, story: mountStory }[P.type];
   if (mount) { store.set('jdc-nono-preview-' + P.id, null); mount(card, P, { preview: true }); }
   else card.appendChild(el('p', 'sub', 'No preview for this puzzle type yet.'));
   const again = el('button', 'btn small', 'Start over'); again.type = 'button'; again.onclick = () => bootPreview(P);
