@@ -220,6 +220,58 @@ form.ans input:disabled { opacity: .5; }
 .ms.done .mc { cursor: default; }
 .msbar { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; align-items: center; }
 .msboom { text-align: center; color: var(--bad); font: 600 14px var(--mono); min-height: 18px; }
+/* logic grid */
+.lgbig .cell.x, .lgmini .cell.x, .lgmini .cell.fx { position: relative; }
+.lgbig .cell.x::before, .lgbig .cell.x::after, .lgmini .cell.x::before, .lgmini .cell.x::after, .lgmini .cell.fx::before, .lgmini .cell.fx::after {
+  content: ""; position: absolute; left: 22%; right: 22%; top: 50%; height: 2px; margin-top: -1px; border-radius: 2px; background: var(--bad); transform: rotate(45deg); }
+.lgbig .cell.x::after, .lgmini .cell.x::after, .lgmini .cell.fx::after { transform: rotate(-45deg); }
+.lgmini .cell.fx::before, .lgmini .cell.fx::after { opacity: .4; }
+.lgbig { display: grid; width: 100%; max-width: 520px; user-select: none; -webkit-user-select: none; }
+.lgbig .cn { font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--signal); text-align: center; padding-bottom: 2px; border-bottom: 1px solid var(--line); margin: 0 1px; }
+.lgbig .ch { writing-mode: vertical-rl; transform: rotate(180deg); font: 600 10px/1 var(--mono); color: var(--ink); padding: 6px 0 4px; display: flex; align-items: center; justify-content: flex-start; min-height: 64px; white-space: nowrap; overflow: hidden; }
+.lgbig .rn { writing-mode: vertical-rl; transform: rotate(180deg); font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--signal); text-align: center; border-left: 1px solid var(--line); margin: 1px 0; }
+.lgbig .rh { font: 600 11px var(--mono); color: var(--ink); display: flex; align-items: center; justify-content: flex-end; padding-right: 5px; white-space: nowrap; }
+.lgbig .rh.gt { border-top: 2px solid transparent; }
+.lgbig .cell { aspect-ratio: 1; min-width: 0; border: 0; border-left: 1px solid var(--line); border-top: 1px solid var(--line); background: var(--bg); color: var(--ink); font: 700 clamp(12px, 3.6vw, 17px)/1 var(--body); padding: 0; cursor: pointer; display: grid; place-items: center; }
+.lgbig .cell.gl { border-left: 2px solid var(--muted); } .lgbig .cell.gt { border-top: 2px solid var(--muted); }
+.lgbig .cell.gr { border-right: 2px solid var(--muted); } .lgbig .cell.gb { border-bottom: 2px solid var(--muted); }
+.lgbig .cell.x { color: var(--bad); } .lgbig .cell.y { color: var(--ok); background: var(--ok-dim); box-shadow: inset 0 0 0 2px var(--ok); }
+.lgbig .cell:disabled { cursor: default; }
+.lgrow { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.lgclues { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.lgclues button { width: 100%; text-align: left; display: flex; gap: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 10px; padding: 10px 12px; font: 15px/1.4 var(--body); cursor: pointer; }
+.lgclues button b { font: 700 12px/1.8 var(--mono); color: var(--signal); min-width: 16px; }
+.lgclues button.used { opacity: .45; } .lgclues button.used span { text-decoration: line-through; }
+.lgtabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.lgtabs button { font: 600 12px var(--mono); border: 1px solid var(--line); border-radius: 999px; padding: 7px 11px; background: var(--bg); color: var(--muted); cursor: pointer; }
+.lgtabs button.on { border-color: var(--signal); color: var(--ink); background: var(--signal-dim); }
+.lggrid { display: grid; grid-template-columns: minmax(84px, 1.25fr) repeat(4, minmax(44px, 1fr)); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; max-width: 420px; }
+.lggrid .h { font: 600 11px/1.15 var(--mono); color: var(--muted); padding: 6px 3px; text-align: center; display: grid; place-items: center; background: var(--panel2); min-height: 44px; overflow-wrap: anywhere; }
+.lggrid .corner { font-size: 10px; color: var(--signal); place-items: center start; padding-left: 8px; text-align: left; }
+.lggrid .rh { display: flex; align-items: center; padding: 0 8px; font: 600 13px var(--body); border-top: 1px solid var(--line); background: var(--panel2); }
+.lggrid .cell { aspect-ratio: 1; border: 0; border-left: 1px solid var(--line); border-top: 1px solid var(--line); background: var(--bg); color: var(--ink); font: 700 24px var(--body); padding: 0; cursor: pointer; }
+.lggrid .cell.x { color: var(--bad); } .lggrid .cell.y { color: var(--ok); background: var(--ok-dim); box-shadow: inset 0 0 0 2px var(--ok); }
+.lggrid .cell:disabled { cursor: default; }
+.lgcheck { display: flex; gap: 6px; align-items: center; font-size: 13px; color: var(--muted); }
+.lgans { display: grid; grid-template-columns: auto repeat(3, minmax(0, 1fr)); gap: 6px; align-items: center; }
+.lgans .h { font: 600 11px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+.lgans .rh { font: 600 13px var(--body); padding-right: 4px; }
+.lgans select { width: 100%; min-width: 0; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 9px 4px; font: 13px var(--body); }
+.lgreveal { font-family: var(--verse); font-size: 17px; line-height: 1.5; margin: 0; }
+.lgtut { position: fixed; inset: 0; z-index: 50; background: rgba(8,10,16,.78); display: grid; place-items: start center; overflow-y: auto; padding: 24px 16px; }
+.lgtutbox { position: relative; width: 100%; max-width: 480px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 22px 16px 16px; display: flex; flex-direction: column; gap: 12px; text-align: center; }
+.lgtutbox .eyebrow { justify-content: center; margin: 0; }
+.lgtutx { position: absolute; top: 8px; right: 8px; width: 40px; height: 40px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); font-size: 22px; cursor: pointer; }
+.lgstep { display: flex; gap: 14px; align-items: center; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 12px; text-align: left; }
+.lgstep p { margin: 0 0 4px; font-size: 14px; color: var(--muted); } .lgstep p.q { font-family: var(--verse); font-style: italic; color: var(--ink); font-size: 15px; }
+.lgstep.last p { color: var(--ink); }
+.lgmini { display: grid; gap: 0; flex: none; font: 600 10px var(--mono); }
+.lgmini .h { color: var(--muted); text-align: center; padding-bottom: 3px; overflow: hidden; }
+.lgmini .rh { color: var(--ink); padding-right: 6px; display: flex; align-items: center; justify-content: flex-end; white-space: nowrap; max-width: 84px; overflow: hidden; }
+.lgmini .cell { width: 36px; height: 36px; border: 1px solid var(--line); margin: 0 -1px -1px 0; display: grid; place-items: center; font-size: 16px; background: var(--panel2); }
+.lgmini .cell { font-family: var(--body); font-weight: 700; } .lgmini .cell.x { color: var(--bad); } .lgmini .cell.fx { color: rgba(255,107,107,.4); } .lgmini .cell.y { color: var(--ok); box-shadow: inset 0 0 0 2px var(--ok); }
+.lgtutgo { width: 100%; margin-top: 4px; }
+@media (max-width: 420px) { .lgstep { flex-direction: column; align-items: flex-start; } }
 /* story */
 .stclock { display: flex; align-items: center; gap: 10px; font: 13px var(--mono); color: var(--muted); }
 .stclock b { color: var(--ink); font-weight: 700; font-size: 15px; }
@@ -300,8 +352,8 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const RANK_PTS = [5, 3, 2, 1];   // 1st..4th on each puzzle
 const FINISH_PTS = 1;            // any later solve
 const POLL_MS = 12000;
-const TYPE_LABEL = { nonogram: 'Nonogram', riddle: 'Riddle', sudoku: 'Sudoku', wordsearch: 'Word search', findit: 'Find it', spotdiff: 'Spot the difference', minesweeper: 'Minesweeper', story: 'Story' };
-const TRIES_TYPES = new Set(['riddle', 'findit', 'spotdiff', 'minesweeper', 'story']);
+const TYPE_LABEL = { nonogram: 'Nonogram', riddle: 'Riddle', sudoku: 'Sudoku', wordsearch: 'Word search', findit: 'Find it', spotdiff: 'Spot the difference', minesweeper: 'Minesweeper', story: 'Story', logic: 'Logic grid' };
+const TRIES_TYPES = new Set(['riddle', 'findit', 'spotdiff', 'minesweeper', 'story', 'logic']);
 const FAIL_WORDS = { minesweeper: ['boom', 'booms'], story: ['fail', 'fails'] };   // types where attempts are failures, not guesses   // puzzle types where wrong attempts count
 const AV_COLORS = ['#ff9d3c', '#5fd4a0', '#7fb2ff', '#f5c84c', '#ff7eb6', '#b59cff', '#5fd0e0', '#d9925b'];
 
@@ -516,7 +568,7 @@ function renderToday() {
     if (livePuzzles().length > 1) v.appendChild(el('p', 'legend', `${livePuzzles().length - 1} more live in History`));
     const card = el('div', 'card'); card.id = 'player'; v.appendChild(card);
     if (!S.me) card.appendChild(el('p', 'sub', 'Coach view: you can try the puzzle, but nothing is recorded.'));
-    const mount = { nonogram: mountNonogram, riddle: mountRiddle, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper, story: mountStory }[p.type];
+    const mount = { nonogram: mountNonogram, riddle: mountRiddle, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper, story: mountStory, logic: mountLogic }[p.type];
     if (mount) mount(card, p); else card.appendChild(el('p', 'sub', 'This puzzle type needs an app update. Refresh the page, or tell Joaquin.'));
     const side = el('div', 'card'); side.id = 'todaySide'; v.appendChild(side);
     if (S.me) rpc('open_puzzle', { p_token: token, p_puzzle: p.id }).then(refresh).catch(() => {});
@@ -800,6 +852,7 @@ function renderPreview(panel, p) {
   else if (p.type === 'spotdiff') mountSpotdiff(body, p, { preview: true });
   else if (p.type === 'minesweeper') mountMinesweeper(body, p, { preview: true });
   else if (p.type === 'story') mountStory(body, p, { preview: true });
+  else if (p.type === 'logic') mountLogic(body, p, { preview: true });
   else if (p.type === 'riddle') {
     const cfg = p.config || {};
     if (cfg.brief) body.appendChild(el('p', 'sub', cfg.brief));
@@ -1782,6 +1835,218 @@ function mountStory(card, p, opts = {}) {
   if ((nodes()[st.node] || {}).ending === 'good') finish();
 }
 
+/* ---------- logic grid (whodunit) ---------- */
+// A clue's c is [kind, item, item, ...]; an item is [category, index]. Category 0 is the suspects; A[c-1][suspect] = index.
+function logicHolds(cl, A) {
+  const sus = it => it[0] === 0 ? it[1] : A[it[0] - 1].indexOf(it[1]);
+  const when = it => it[0] === 3 ? it[1] : A[2][sus(it)];
+  const [k, x, y, z] = cl;
+  if (k === 'is') return sus(x) === sus(y);
+  if (k === 'not') return sus(x) !== sus(y);
+  if (k === 'either') return sus(x) === sus(y) || sus(x) === sus(z);
+  if (k === 'before') return when(x) < when(y);
+  if (k === 'gap') return when(y) - when(x) === z;
+  return false;
+}
+const LOGIC_PAIRS = [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]];
+function logicMini(rows, cols, marks, opts = {}) {   // marks: {'r,c': 'x' | 'y' | 'fx' (faded x)}
+  const g = el('div', 'lgmini'); g.style.gridTemplateColumns = `auto repeat(${cols.length}, 36px)`;
+  if (opts.split) g.classList.add('split');
+  g.appendChild(el('span'));
+  cols.forEach(c => g.appendChild(el('span', 'h', c)));
+  rows.forEach((r, i) => {
+    g.appendChild(el('span', 'rh', r));
+    cols.forEach((_, j) => { const m = marks[i + ',' + j] || ''; g.appendChild(el('span', 'cell ' + m, m === 'y' ? '✓' : '')); });
+  });
+  return g;
+}
+function showLogicTutorial(cfg, onClose) {
+  const C = cfg.cats || [], S = (C[0] ? C[0].items.slice(0, 3) : ['Ryan', 'Chloe', 'Vincent']).map(n => n.length > 5 ? n.slice(0, 4) + '.' : n), R = C[1] ? C[1].short.slice(0, 3) : ['Dining', 'Kitchen', 'Study'];
+  const Rf = C[1] ? C[1].items : R;
+  const back = el('div', 'lgtut'); back.setAttribute('role', 'dialog'); back.setAttribute('aria-modal', 'true'); back.setAttribute('aria-label', 'How to play');
+  const box = el('div', 'lgtutbox');
+  const x = el('button', 'lgtutx', '×'); x.type = 'button'; x.setAttribute('aria-label', 'Close');
+  box.append(x, el('p', 'eyebrow', 'How to play'), el('h2', null, 'Logic grid'), el('p', 'sub', 'Match every suspect to one room, one item and one time.'));
+  const step = (grid, quote, line) => {
+    const s = el('div', 'lgstep'); s.appendChild(grid);
+    const t = el('div'); if (quote) t.appendChild(el('p', 'q', `“${quote}”`)); t.appendChild(el('p', null, line)); s.appendChild(t); return s;
+  };
+  box.append(
+    step(logicMini(Rf.slice(0, 3), S, {}), '', 'The big grid is made of blocks. Each block pairs two lists, like suspects and rooms. One ✓ per row, one per column.'),
+    step(logicMini(Rf.slice(0, 3), S, { '1,0': 'x' }), `${S[0]} was not in the ${Rf[1]}.`, 'Rule it out with a ×. Tap a square once.'),
+    step(logicMini(Rf.slice(0, 3), S, { '2,1': 'y', '0,1': 'fx', '1,1': 'fx', '2,0': 'fx', '2,2': 'fx' }), `${S[1]} was in the ${Rf[2]}.`, 'Tap twice for ✓. It crosses out the rest of its row and column for you. Tap the ✓ again to remove it, and the ×s it placed go with it.'),
+    step(logicMini(Rf.slice(0, 3), S, { '0,0': 'x', '0,1': 'x', '0,2': 'y' }), '', 'So the last empty square in a line answers itself.'),
+    step(logicMini(['3:00', '3:30', '4:00'], S, { '0,0': 'y', '1,0': 'fx', '2,0': 'fx', '0,1': 'fx', '0,2': 'fx' }), `${C[0] ? C[0].items[0] : 'Ryan'} was spotted at ${C[3] ? C[3].items[0] : '3:00 PM'}.`, `Chain your blocks: if you also know ${C[0] ? C[0].items[0] : 'Ryan'} was in the ${Rf[1]}, then whoever was in the ${Rf[1]} was spotted at ${C[3] ? C[3].items[0] : '3:00 PM'} too. Mark that in the Room × Time block.`),
+  );
+  const fin = el('div', 'lgstep last'); fin.appendChild(el('p', null, 'When you know everyone, fill in your answer at the bottom and make your accusation. The server checks it. A few wrong accusations in a row locks you out for a minute, so don’t guess.'));
+  box.appendChild(fin);
+  const go = el('button', 'btn primary lgtutgo', 'Got it — let’s play'); go.type = 'button'; box.appendChild(go);
+  back.appendChild(box); document.body.appendChild(back);
+  const close = () => { back.remove(); document.removeEventListener('keydown', esc); if (onClose) onClose(); };
+  const esc = e => { if (e.key === 'Escape') close(); };
+  x.onclick = close; go.onclick = close; back.onclick = e => { if (e.target === back) close(); };
+  document.addEventListener('keydown', esc);
+  setTimeout(() => go.focus({ preventScroll: true }), 0);
+}
+function mountLogic(card, p, opts = {}) {
+  const cfg = p.config || {}, C = cfg.cats || [], N = 4, clues = cfg.clues || [];
+  const LK = (opts.preview ? 'jdc-logic-preview-' : 'jdc-logic-') + p.id;
+  const blank = () => ({ m: LOGIC_PAIRS.map(() => Array(N * N).fill(0)), src: LOGIC_PAIRS.map(() => Array(N * N).fill(null)), x: [], ans: [1, 2, 3].map(() => Array(N).fill(-1)), view: 0, auto: true });
+  let st = blank(), previewDone = false, busy = false, msg = '', msgBad = false, lt = null;
+  if (!opts.preview) { try { const s = JSON.parse(store.get(LK) || 'null'); if (s && Array.isArray(s.m) && s.m.length === 6) st = Object.assign(blank(), s); } catch (e) {} }
+  const save = () => { if (!opts.preview) store.set(LK, JSON.stringify(st)); };
+  const isDone = () => opts.preview ? previewDone : !!solvedState(p, opts);
+
+  const top = el('div', 'lgrow');
+  const how = el('button', 'btn small', 'How to play'); how.type = 'button'; how.onclick = () => showLogicTutorial(cfg);
+  top.appendChild(how);
+  if (cfg.brief) card.appendChild(el('p', 'sub', cfg.brief));
+  card.appendChild(top);
+  if (cfg.rules) card.appendChild(el('p', 'legend', cfg.rules));
+  card.appendChild(el('h3', null, 'Witness statements'));
+  const clueList = el('ol', 'lgclues'); card.appendChild(clueList);
+  card.appendChild(el('p', 'legend', 'Tap a statement to cross it off once you’ve used it.'));
+  card.appendChild(el('h3', null, 'Your grid'));
+  const gridWrap = el('div'); card.appendChild(gridWrap);
+  const tools = el('div', 'lgrow'); card.appendChild(tools);
+  const autoL = el('label', 'lgcheck'), autoC = el('input'); autoC.type = 'checkbox'; autoL.append(autoC, ' Auto-cross when I place a ✓');
+  autoC.onchange = () => { st.auto = autoC.checked; save(); };
+  const clr = el('button', 'btn small', 'Clear grid'); clr.type = 'button'; let clrArm = null;
+  clr.onclick = () => {
+    if (!clrArm) { clr.textContent = 'Tap again to clear'; clrArm = setTimeout(() => { clrArm = null; clr.textContent = 'Clear grid'; }, 3000); return; }
+    clearTimeout(clrArm); clrArm = null; clr.textContent = 'Clear grid';
+    st.m = LOGIC_PAIRS.map(() => Array(N * N).fill(0)); st.src = LOGIC_PAIRS.map(() => Array(N * N).fill(null)); save(); draw();
+  };
+  tools.append(autoL, clr);
+  card.appendChild(el('h3', null, 'Your accusation'));
+  const ansGrid = el('div', 'lgans'); card.appendChild(ansGrid);
+  const ansRow = el('div', 'lgrow'); card.appendChild(ansRow);
+  const fill = el('button', 'btn small', 'Fill in from my ✓s'); fill.type = 'button';
+  const accuse = el('button', 'btn primary', 'Make the accusation'); accuse.type = 'button';
+  ansRow.append(accuse, fill);
+  const msgEl = el('p', 'msg'); msgEl.setAttribute('aria-live', 'polite'); card.appendChild(msgEl);
+  const meta = el('div', 'meta'); card.appendChild(meta);
+  const w = winCard('Case closed'); const reveal = el('p', 'lgreveal'); w.win.insertBefore(reveal, w.txt); card.appendChild(w.win);
+
+  clues.forEach((cl, i) => {
+    const li = el('li'), b = el('button'); b.type = 'button';
+    b.append(el('b', null, String(i + 1)), el('span', null, cl.t));
+    b.onclick = () => { const k = st.x.indexOf(i); if (k >= 0) st.x.splice(k, 1); else st.x.push(i); save(); draw(); };
+    li.appendChild(b); clueList.appendChild(li);
+  });
+  // answer table: one row per suspect, one dropdown per other list
+  ansGrid.appendChild(el('span'));
+  [1, 2, 3].forEach(c => ansGrid.appendChild(el('span', 'h', C[c].name)));
+  const sels = [[], [], []];
+  C[0].items.forEach((who, s) => {
+    ansGrid.appendChild(el('span', 'rh', who));
+    [1, 2, 3].forEach(c => {
+      const sel = el('select'); sel.setAttribute('aria-label', `${who}: ${C[c].name}`);
+      sel.appendChild(new Option('—', '-1'));
+      C[c].items.forEach((it, j) => sel.appendChild(new Option(it, String(j))));
+      sel.onchange = () => { st.ans[c - 1][s] = +sel.value; msg = ''; save(); draw(); };
+      ansGrid.appendChild(sel); sels[c - 1][s] = sel;
+    });
+  });
+  fill.onclick = () => {
+    [1, 2, 3].forEach(c => {
+      const m = st.m[c - 1];   // blocks 0..2 are suspect × room / item / time
+      for (let s = 0; s < N; s++) { const j = [0, 1, 2, 3].find(j => m[s * N + j] === 2); if (j !== undefined) st.ans[c - 1][s] = j; }
+    });
+    msg = ''; save(); draw();
+  };
+  function tap(k, i, j) {
+    if (isDone()) return;
+    // src[k][cell] lists the ✓s that auto-crossed this square. Squares you mark yourself have no list.
+    if (!Array.isArray(st.src) || st.src.length !== LOGIC_PAIRS.length) st.src = LOGIC_PAIRS.map(() => Array(N * N).fill(null));
+    const m = st.m[k], src = st.src[k], here = i * N + j, was = m[here], v = (was + 1) % 3;
+    m[here] = v; src[here] = null;   // you touched it, so it's yours now
+    const line = []; for (let q = 0; q < N; q++) { if (q !== j) line.push(i * N + q); if (q !== i) line.push(q * N + j); }
+    if (was === 2) line.forEach(c => {   // taking a ✓ away removes the ✗s it placed (unless another ✓ also placed them)
+      if (!src[c]) return;
+      src[c] = src[c].filter(x => x !== here);
+      if (!src[c].length) { src[c] = null; if (m[c] === 1) m[c] = 0; }
+    });
+    if (v === 2 && st.auto) line.forEach(c => {
+      if (m[c] === 0) { m[c] = 1; src[c] = [here]; }
+      else if (m[c] === 1 && src[c] && !src[c].includes(here)) src[c].push(here);
+    });
+    save(); draw();
+  }
+  function lockLeft() { if (opts.preview) return 0; const m = mineFor(p.id), u = m && ms(m.locked_until); return u ? u - serverNow() : 0; }
+  accuse.onclick = async () => {
+    if (isDone() || busy || lockLeft() > 0) return;
+    const A = st.ans;
+    if (A.some(r => r.some(v => v < 0))) { msg = 'Fill in a room, item and time for every suspect first.'; msgBad = true; return draw(); }
+    const dup = A.findIndex(r => new Set(r).size !== N);
+    if (dup >= 0) { msg = `Each ${C[dup + 1].name.toLowerCase()} belongs to exactly one suspect. You’ve used one twice.`; msgBad = true; return draw(); }
+    if (opts.preview) {
+      if (clues.every(cl => logicHolds(cl.c, A))) previewDone = true;
+      else { msg = 'Wrong accusation. At least one statement doesn’t fit.'; msgBad = true; }
+      return draw();
+    }
+    if (!S.me) return;
+    busy = true; msg = 'Checking with the server…'; msgBad = false; draw();
+    try {
+      const res = await rpc('submit_solution', { p_token: token, p_puzzle: p.id, p_answer: { sol: A.map(r => r.join('')).join('') } });
+      msg = res.correct ? '' : 'Wrong accusation. At least one statement doesn’t fit.'; msgBad = !res.correct;
+    } catch (e) { msg = e.message; msgBad = true; }
+    busy = false; await refresh(); draw();
+  };
+  function draw() {
+    const done = isDone();
+    [...clueList.querySelectorAll('button')].forEach((bt, i) => bt.classList.toggle('used', st.x.includes(i)));
+    // One big staircase grid: rows Suspect / Time / Item, columns Room / Item / Time. Every pair of lists appears once.
+    const ROWS = [0, 3, 2], COLS = [1, 2, 3];
+    const g = el('div', 'lgbig'), sh = c => (C[c].short || C[c].items);
+    g.style.gridTemplateColumns = `18px minmax(46px, auto) repeat(${COLS.length * N}, minmax(0, 1fr))`;
+    const put = (node, r, c, rs, cs) => { node.style.gridRow = rs ? `${r} / span ${rs}` : String(r); node.style.gridColumn = cs ? `${c} / span ${cs}` : String(c); g.appendChild(node); return node; };
+    COLS.forEach((cc, gi) => {
+      put(el('span', 'cn', C[cc].name), 1, 3 + gi * N, 0, N);
+      sh(cc).forEach((t, j) => put(el('span', 'ch' + (j === 0 && gi ? ' gl' : ''), t), 2, 3 + gi * N + j));
+    });
+    ROWS.forEach((rc, gr) => {
+      const r0 = 3 + gr * N;
+      put(el('span', 'rn', C[rc].name), r0, 1, N);
+      C[rc].items.forEach((it, i) => {
+        put(el('span', 'rh' + (i === 0 && gr ? ' gt' : ''), sh(rc)[i]), r0 + i, 2);
+        COLS.forEach((cc, gi) => {
+          if (gi >= COLS.length - gr) return;          // staircase: later row groups have fewer blocks
+          const k = LOGIC_PAIRS.findIndex(([x, y]) => x === Math.min(rc, cc) && y === Math.max(rc, cc));
+          C[cc].items.forEach((it2, j) => {
+            const [ii, jj] = rc < cc ? [i, j] : [j, i], v = st.m[k][ii * N + jj];
+            const cell = el('button', 'cell' + (v === 1 ? ' x' : v === 2 ? ' y' : '') + (j === 0 && gi ? ' gl' : '') + (i === 0 && gr ? ' gt' : '') + (i === N - 1 ? ' gb' : '') + (j === N - 1 ? ' gr' : ''), v === 2 ? '✓' : '');
+            cell.type = 'button'; cell.setAttribute('aria-label', `${it} and ${it2}: ${v === 1 ? 'ruled out' : v === 2 ? 'match' : 'empty'}`);
+            cell.disabled = done; cell.onclick = () => tap(k, ii, jj);
+            put(cell, r0 + i, 3 + gi * N + j);
+          });
+        });
+      });
+    });
+    gridWrap.replaceChildren(g);
+    autoC.checked = st.auto;
+    sels.forEach((row, c) => row.forEach((sel, s) => { sel.value = String(st.ans[c][s]); sel.disabled = done; }));
+    const left = lockLeft();
+    clearTimeout(lt);
+    if (left > 0 && !done) { msgEl.textContent = `Too many wrong accusations. Wait ${Math.ceil(left / 1000)}s.`; msgEl.className = 'msg wait'; lt = setTimeout(draw, 500); }
+    else { msgEl.textContent = msg; msgEl.className = 'msg' + (msgBad ? ' bad' : ''); }
+    accuse.disabled = done || busy || left > 0; fill.disabled = done; ansRow.hidden = done; tools.hidden = done;
+    const r = opts.preview || !S.me ? null : resultFor(p.id, S.me);
+    meta.replaceChildren(el('span', null, done ? 'Solved' : `Wrong accusations: ${r ? r.attempts : 0}`));
+    w.win.hidden = !done;
+    if (done) {
+      const cr = cfg.crime || { cat: 1, idx: 0 }, A = st.ans, s = A[cr.cat - 1].indexOf(cr.idx);
+      const known = s >= 0 && A.every(row => row.every(v => v >= 0));
+      reveal.textContent = known ? `${C[0].items[s]} did it, in the ${C[cr.cat].items[cr.idx]}, holding the ${C[2].items[A[1][s]]}, at ${C[3].items[A[2][s]]}.` : '';
+      fillWin(w, p, opts, previewDone);
+      if (!opts.preview && r) w.stamp.textContent = `${r.attempts + 1} ${r.attempts ? 'tries' : 'try'} · ` + w.stamp.textContent;
+    }
+  }
+  card._sync = draw; draw();
+  let seen = null; try { seen = localStorage.getItem('jdc-logic-howto'); } catch (e) {}
+  if (!seen && !isDone()) { showLogicTutorial(cfg, () => { try { localStorage.setItem('jdc-logic-howto', '1'); } catch (e) {} }); }
+}
+
 /* ---------- riddle ---------- */
 function mountRiddle(card, p) {
   const P = p.config || {};
@@ -2008,7 +2273,7 @@ function bootPreview(P) {
   const r = el('div', 'row wrap'); r.append(el('span', 'chip live', (TYPE_LABEL[P.type] || P.type) + ' · preview'), el('span', 'legend', 'Exactly how challengers will see it. Nothing is recorded.'));
   v.append(r, el('h2', null, P.title));
   const card = el('div', 'card'); card.id = 'player'; v.appendChild(card);
-  const mount = { nonogram: mountNonogram, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper, story: mountStory }[P.type];
+  const mount = { nonogram: mountNonogram, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper, story: mountStory, logic: mountLogic }[P.type];
   if (mount) { store.set('jdc-nono-preview-' + P.id, null); mount(card, P, { preview: true }); }
   else card.appendChild(el('p', 'sub', 'No preview for this puzzle type yet.'));
   const again = el('button', 'btn small', 'Start over'); again.type = 'button'; again.onclick = () => bootPreview(P);
