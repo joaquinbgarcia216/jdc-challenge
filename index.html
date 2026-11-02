@@ -10,7 +10,7 @@
 <title>JDC Challenge HQ</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23121620'/%3E%3Crect x='7' y='7' width='5' height='5' fill='%23ff9d3c'/%3E%3Crect x='14' y='7' width='5' height='5' fill='%23e8ecf4'/%3E%3Crect x='14' y='14' width='5' height='5' fill='%23ff9d3c'/%3E%3Crect x='21' y='14' width='5' height='5' fill='%23e8ecf4'/%3E%3Crect x='7' y='21' width='5' height='5' fill='%23e8ecf4'/%3E%3Crect x='21' y='21' width='5' height='5' fill='%23ff9d3c'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Serif&family=JetBrains+Mono:wght@500;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Serif&family=JetBrains+Mono:wght@500;700&family=VT323&display=swap">
 <style>
 /* Layout: phone-first app shell — header, one view at a time, tab bar fixed to the bottom. "Intercepted transmission" look, dark only. */
 :root {
@@ -220,6 +220,27 @@ form.ans input:disabled { opacity: .5; }
 .ms.done .mc { cursor: default; }
 .msbar { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; align-items: center; }
 .msboom { text-align: center; color: var(--bad); font: 600 14px var(--mono); min-height: 18px; }
+/* maze */
+.mzview { position: relative; width: 100%; max-width: 560px; margin: 0 auto; border: 2px solid var(--signal); border-radius: 10px; overflow: hidden; background: #000; aspect-ratio: 16 / 9; container-type: inline-size; }
+.mzview canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; }
+.mzover { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 4%; padding: 5%; text-align: center; pointer-events: none; }
+.mzover.mid, .mzover.black { display: flex; }
+.mzover.plain { background: var(--bg); }
+.mzover.won { background: linear-gradient(135deg, var(--panel) 0%, #2a2212 100%); }
+.mzover .pix.tiny { font-size: 3.4cqw; color: var(--muted); margin-top: 2%; }
+.mzover.black { background: #000; justify-content: space-between; padding: 4% 5%; gap: 2%; }
+.mzover .pix { font-family: "VT323", "JetBrains Mono", monospace; color: #fff; text-transform: uppercase; letter-spacing: .04em; line-height: 1.05; }
+.mzover .pix.txt { font-size: 5cqw; }
+.mzover .pix.small { font-size: 3.8cqw; }
+.mzover .pix.huge { font-size: 17cqw; color: var(--signal); text-shadow: 3px 3px 0 #000, -3px -3px 0 #000, 3px -3px 0 #000, -3px 3px 0 #000; }
+.mzover.mid .pix.small { text-shadow: 2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000; }
+.mzover .pix.big { font-size: 6.2cqw; text-shadow: 2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000; }
+.mzover .emo { font-size: 10cqw; line-height: 1; filter: saturate(1.1); }
+.mzhole { width: 30%; aspect-ratio: 4 / 1; border-radius: 50%; background: #000; box-shadow: 0 -3px 0 #444, 0 3px 0 #ccc; }
+.mzpad { display: grid; grid-template-columns: 1fr 1.4fr 1fr; gap: 8px; max-width: 420px; width: 100%; margin: 0 auto; }
+.mzpad button { height: 58px; border: 1px solid var(--line); background: var(--panel2); color: var(--ink); border-radius: 12px; font: 700 26px var(--body); cursor: pointer; touch-action: manipulation; }
+.mzpad button.sp { font: 400 26px "VT323", var(--mono); letter-spacing: .08em; background: var(--signal-dim); border-color: var(--signal); color: var(--signal); }
+.mzpad button:disabled { opacity: .35; cursor: default; }
 /* logic grid */
 .lgbig .cell.x, .lgmini .cell.x, .lgmini .cell.fx { position: relative; }
 .lgbig .cell.x::before, .lgbig .cell.x::after, .lgmini .cell.x::before, .lgmini .cell.x::after, .lgmini .cell.fx::before, .lgmini .cell.fx::after {
@@ -352,9 +373,9 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const RANK_PTS = [5, 3, 2, 1];   // 1st..4th on each puzzle
 const FINISH_PTS = 1;            // any later solve
 const POLL_MS = 12000;
-const TYPE_LABEL = { nonogram: 'Nonogram', riddle: 'Riddle', sudoku: 'Sudoku', wordsearch: 'Word search', findit: 'Find it', spotdiff: 'Spot the difference', minesweeper: 'Minesweeper', story: 'Story', logic: 'Logic grid' };
+const TYPE_LABEL = { nonogram: 'Nonogram', riddle: 'Riddle', sudoku: 'Sudoku', wordsearch: 'Word search', findit: 'Find it', spotdiff: 'Spot the difference', minesweeper: 'Minesweeper', story: 'Story', logic: 'Logic grid', maze: 'Maze' };
 const TRIES_TYPES = new Set(['riddle', 'findit', 'spotdiff', 'minesweeper', 'story', 'logic']);
-const FAIL_WORDS = { minesweeper: ['boom', 'booms'], story: ['fail', 'fails'] };   // types where attempts are failures, not guesses   // puzzle types where wrong attempts count
+const FAIL_WORDS = { minesweeper: ['boom', 'booms'], story: ['fail', 'fails'], maze: ['death', 'deaths'] };   // types where attempts are failures, not guesses   // puzzle types where wrong attempts count
 const AV_COLORS = ['#ff9d3c', '#5fd4a0', '#7fb2ff', '#f5c84c', '#ff7eb6', '#b59cff', '#5fd0e0', '#d9925b'];
 
 /* ---------- tiny helpers ---------- */
@@ -568,7 +589,7 @@ function renderToday() {
     if (livePuzzles().length > 1) v.appendChild(el('p', 'legend', `${livePuzzles().length - 1} more live in History`));
     const card = el('div', 'card'); card.id = 'player'; v.appendChild(card);
     if (!S.me) card.appendChild(el('p', 'sub', 'Coach view: you can try the puzzle, but nothing is recorded.'));
-    const mount = { nonogram: mountNonogram, riddle: mountRiddle, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper, story: mountStory, logic: mountLogic }[p.type];
+    const mount = { nonogram: mountNonogram, riddle: mountRiddle, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper, story: mountStory, logic: mountLogic, maze: mountMaze }[p.type];
     if (mount) mount(card, p); else card.appendChild(el('p', 'sub', 'This puzzle type needs an app update. Refresh the page, or tell Joaquin.'));
     const side = el('div', 'card'); side.id = 'todaySide'; v.appendChild(side);
     if (S.me) rpc('open_puzzle', { p_token: token, p_puzzle: p.id }).then(refresh).catch(() => {});
@@ -853,6 +874,7 @@ function renderPreview(panel, p) {
   else if (p.type === 'minesweeper') mountMinesweeper(body, p, { preview: true });
   else if (p.type === 'story') mountStory(body, p, { preview: true });
   else if (p.type === 'logic') mountLogic(body, p, { preview: true });
+  else if (p.type === 'maze') mountMaze(body, p, { preview: true });
   else if (p.type === 'riddle') {
     const cfg = p.config || {};
     if (cfg.brief) body.appendChild(el('p', 'sub', cfg.brief));
@@ -2047,6 +2069,285 @@ function mountLogic(card, p, opts = {}) {
   if (!seen && !isDone()) { showLogicTutorial(cfg, () => { try { localStorage.setItem('jdc-logic-howto', '1'); } catch (e) {} }); }
 }
 
+/* ---------- maze (Survive the Maze: a 3D hallway, left / right only, everything looks like a death) ---------- */
+const MZW = 320, MZH = 180, MZ_D = [[-1, 0], [0, 1], [1, 0], [0, -1]], MZ_ANG = [-Math.PI / 2, 0, Math.PI / 2, Math.PI];
+const mzRGB = (r, g, b) => (255 << 24) | (b << 16) | (g << 8) | r;
+const MZ_COL = {   // Challenge HQ colours: navy ceiling, blue floor, slate walls with orange / gold / green trim
+  ceil: [16, 20, 30], floor: [[30, 52, 86], [34, 60, 98], [26, 46, 76], [40, 68, 110]],
+  wall: [60, 72, 100], wallSide: [48, 58, 82], trim: [[255, 157, 60], [245, 200, 76], [95, 212, 160], [255, 157, 60]],
+};
+function mzHash(a, b) { let h = (a * 374761393 + b * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177 | 0; return (h ^ (h >>> 16)) >>> 0; }
+function mzSprite(txt) {
+  const c = document.createElement('canvas'); c.width = 128; c.height = 64; const x = c.getContext('2d');
+  x.font = '44px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif'; x.textAlign = 'center'; x.textBaseline = 'bottom';
+  x.fillText(txt, 64, 62); return c;
+}
+function mzDoor() {
+  const c = document.createElement('canvas'); c.width = 64; c.height = 96; const x = c.getContext('2d');
+  const g = x.createLinearGradient(0, 0, 0, 96); g.addColorStop(0, '#fff6c9'); g.addColorStop(1, '#f5c84c');
+  x.fillStyle = '#ff9d3c'; x.fillRect(4, 8, 56, 88); x.fillStyle = g; x.fillRect(10, 14, 44, 82); return c;
+}
+// the same walking rules as the server's route check (tools/gen_maze.py)
+function mzCell(rows, r, c) { return r < 0 || r >= rows.length || c < 0 || c >= rows[0].length ? '#' : rows[r][c]; }
+function mzExits(rows, [r, c], d) { const out = []; for (const rel of [-1, 0, 1]) { const nd = (d + rel + 4) % 4; if (mzCell(rows, r + MZ_D[nd][0], c + MZ_D[nd][1]) !== '#') out.push(nd); } return out; }
+function mzWalk(rows, cell, d) {
+  const pts = [cell], seen = new Set();
+  for (let guard = 0; guard < 400; guard++) {
+    cell = [cell[0] + MZ_D[d][0], cell[1] + MZ_D[d][1]]; pts.push(cell);
+    const ex = mzExits(rows, cell, d), key = cell + ':' + d;
+    if (seen.has(key)) break; seen.add(key);
+    if (ex.length === 0) return { kind: 'end', cell, d, pts };
+    if (ex.length === 1) { d = ex[0]; continue; }
+    return { kind: 'fork', cell, d, pts };
+  }
+  return { kind: 'bad', cell, d, pts };
+}
+
+function mountMaze(card, p, opts = {}) {
+  const cfg = p.config || {}, LK = (opts.preview ? 'jdc-maze-preview-' : 'jdc-maze-') + p.id;
+  const fresh = () => ({ scr: 'title', floor: 0, cell: null, d: 0, path: '', deaths: 0, leaf: null, floors: { 0: cfg.floor1 }, sig: null });
+  let st = fresh(), busy = false, anim = null, msg = '', previewDone = false;
+  if (!opts.preview) { try { const s = JSON.parse(store.get(LK) || 'null'); if (s && s.floors) st = Object.assign(fresh(), s); } catch (e) {} }
+  const SIG = (cfg.floor1 && cfg.floor1.rows || []).join('|');
+  if (st.sig !== SIG) st = fresh();          // the coach pasted a new version of this maze: start clean
+  st.sig = SIG; st.floors[0] = cfg.floor1;
+  if (!['title', 'fork', 'black', 'won'].includes(st.scr)) st.scr = 'title';
+  if (st.scr === 'black' && st.leaf === 'H' && !st.floors[st.floor + 1] && opts.preview) st.leaf = 'x';
+  const save = () => { if (!opts.preview) store.set(LK, JSON.stringify(st)); };
+  const isDone = () => opts.preview ? previewDone : !!solvedState(p, opts);
+  const F = () => st.floors[st.floor] || cfg.floor1, rows = () => F().rows;
+  for (const k of Object.keys(st.floors)) if (!st.floors[k] || !Array.isArray(st.floors[k].rows)) { st = Object.assign(fresh(), { sig: SIG, floors: { 0: cfg.floor1 } }); break; }
+  if (st.scr === 'fork' && (!st.cell || !F() || mzExits(F().rows, st.cell, st.d).length !== 2)) { st.scr = 'title'; st.floor = 0; }
+  const startCell = () => { const R = rows(); for (let r = 0; r < R.length; r++) { const c = R[r].indexOf('S'); if (c >= 0) return [r, c]; } return [1, 1]; };
+
+  if (cfg.brief) card.appendChild(el('p', 'sub', cfg.brief));
+  const view = el('div', 'mzview'); const cv = el('canvas'); cv.width = MZW; cv.height = MZH; cv.setAttribute('role', 'img'); view.appendChild(cv);
+  const over = el('div', 'mzover'); view.appendChild(over);
+  card.appendChild(view);
+  const pad = el('div', 'mzpad'); card.appendChild(pad);
+  const mk = (label, aria, fn, cls) => { const b = el('button', cls || '', label); b.type = 'button'; b.setAttribute('aria-label', aria); b.onclick = e => { b.blur(); fn(); }; b.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') e.preventDefault(); }); pad.appendChild(b); return b; };
+  const bL = mk('←', 'Left', () => choose(0)), bS = mk('SPACE', 'Space', space, 'sp'), bR = mk('→', 'Right', () => choose(1));
+  const msgEl = el('p', 'msg bad'); card.appendChild(msgEl);
+  const w = winCard('You survived the maze'); card.appendChild(w.win);
+
+  // ----- renderer: a small raycaster -----
+  const ctx = cv.getContext('2d'); ctx.imageSmoothingEnabled = false;
+  const img = ctx.createImageData(MZW, MZH), buf = new Uint32Array(img.data.buffer), zbuf = new Float32Array(MZW);
+  const sprites = {}; let door = null;
+  const fogged = (c, k) => mzRGB(c[0] * k | 0, c[1] * k | 0, c[2] * k | 0);
+  const PLANE = .78, FOC = (MZW / 2) / PLANE, HOR = MZH / 2, FLOOR_H = .5 * FOC, CEIL_H = .62 * FOC;
+  function render(px, py, ang, extra = {}) {
+    const R = rows(), dx = Math.cos(ang), dy = Math.sin(ang), plx = -dy * PLANE, ply = dx * PLANE;
+    // floor and ceiling, row by row
+    for (let y = 0; y < MZH; y++) {
+      const below = y > HOR, k = below ? y - HOR : HOR - y;
+      if (k < .5) { for (let x = 0; x < MZW; x++) buf[y * MZW + x] = mzRGB(10, 12, 18); continue; }
+      const dist = (below ? FLOOR_H : CEIL_H) / k, fog = Math.max(.28, 1 - dist * .085);
+      if (!below) { const c = fogged(MZ_COL.ceil, fog); for (let x = 0; x < MZW; x++) buf[y * MZW + x] = c; continue; }
+      let fx = px + dist * (dx - plx), fy = py + dist * (dy - ply); const sx = dist * 2 * plx / MZW, sy = dist * 2 * ply / MZW;
+      for (let x = 0; x < MZW; x++, fx += sx, fy += sy) {
+        const cx = Math.floor(fx), cy = Math.floor(fy); let col;
+        if (mzCell(R, cy, cx) === 'H') {
+          const ox = fx - cx - .5, oy = fy - cy - .5, rr = ox * ox + oy * oy;
+          if (rr < .1) { buf[y * MZW + x] = mzRGB(0, 0, 0); continue; }
+          if (rr < .125) { buf[y * MZW + x] = fogged([70, 80, 100], fog); continue; }
+        }
+        col = MZ_COL.floor[mzHash(Math.floor(fx * 7), Math.floor(fy * 7)) & 3];
+        buf[y * MZW + x] = fogged(col, fog);
+      }
+    }
+    // walls, column by column
+    for (let x = 0; x < MZW; x++) {
+      const cam = 2 * x / MZW - 1, rx = dx + plx * cam, ry = dy + ply * cam;
+      let mx = Math.floor(px), my = Math.floor(py);
+      const ddx = Math.abs(1 / rx), ddy = Math.abs(1 / ry), stx = rx < 0 ? -1 : 1, sty = ry < 0 ? -1 : 1;
+      let sdx = (rx < 0 ? px - mx : mx + 1 - px) * ddx, sdy = (ry < 0 ? py - my : my + 1 - py) * ddy, side = 0, hit = false;
+      for (let i = 0; i < 64 && !hit; i++) {
+        if (sdx < sdy) { sdx += ddx; mx += stx; side = 0; } else { sdy += ddy; my += sty; side = 1; }
+        if (mzCell(R, my, mx) === '#') hit = true;
+      }
+      const perp = Math.max(.05, side === 0 ? sdx - ddx : sdy - ddy); zbuf[x] = perp;
+      let wx = side === 0 ? py + perp * ry : px + perp * rx; wx -= Math.floor(wx);
+      const top = Math.max(0, Math.floor(HOR - CEIL_H / perp)), bot = Math.min(MZH, Math.ceil(HOR + FLOOR_H / perp));
+      const fog = Math.max(.28, 1 - perp * .085), base = side ? MZ_COL.wallSide : MZ_COL.wall;
+      let col = fogged(base, fog);
+      if (wx > .43 && wx < .57) col = fogged(MZ_COL.trim[Math.min(3, Math.floor((wx - .43) / .035))], fog * .95);
+      const edge = fogged([30, 36, 52], fog);
+      for (let y = top; y < bot; y++) buf[y * MZW + x] = (y === top || y === bot - 1) ? edge : col;
+    }
+    ctx.putImageData(img, 0, 0);
+    // what waits at the dead ends: drawn as flat signs standing on the floor, hidden behind walls
+    const list = [];
+    R.forEach((row, r) => { for (let c = 0; c < row.length; c++) { const ch = row[c]; if ((F().items || {})[ch] || ch === 'W') list.push([r, c, ch]); } });
+    list.map(([r, c, ch]) => ({ r, c, ch, d2: (c + .5 - px) ** 2 + (r + .5 - py) ** 2 })).sort((a, b) => b.d2 - a.d2).forEach(s => {
+      const sx = s.c + .5 - px, sy = s.r + .5 - py, inv = 1 / (plx * dy - dx * ply);
+      const tx = inv * (dy * sx - dx * sy), ty = inv * (-ply * sx + plx * sy);
+      if (ty <= .15) return;
+      const im = s.ch === 'W' ? (door || (door = mzDoor())) : (sprites[s.ch] || (sprites[s.ch] = mzSprite((F().items[s.ch] || {}).icon || '💀')));
+      const scrX = (MZW / 2) * (1 + tx / ty), hgt = (s.ch === 'W' ? .9 : .42) * FOC / ty, wid = hgt * im.width / im.height;
+      const yBot = HOR + FLOOR_H / ty, x0 = Math.floor(scrX - wid / 2), x1 = Math.ceil(scrX + wid / 2);
+      for (let x = Math.max(0, x0); x < Math.min(MZW, x1); x++) {
+        if (ty >= zbuf[x]) continue;
+        const u = Math.floor((x - (scrX - wid / 2)) / wid * im.width);
+        ctx.drawImage(im, u, 0, 1, im.height, x, yBot - hgt, 1, hgt);
+      }
+    });
+    if (extra.arrows) mzArrows(ctx, extra.arrows);
+    if (extra.fade) { ctx.fillStyle = `rgba(0,0,0,${extra.fade})`; ctx.fillRect(0, 0, MZW, MZH); }
+  }
+  function mzArrows(x, a) {
+    const arrow = (cx, cy, dir) => {
+      x.save(); x.translate(cx, cy); x.scale(dir, 1);
+      x.beginPath(); x.moveTo(-22, 0); x.lineTo(-4, -14); x.lineTo(-6, -6); x.lineTo(22, -7); x.lineTo(18, 0); x.lineTo(22, 7); x.lineTo(-6, 6); x.lineTo(-4, 14); x.closePath();
+      x.fillStyle = '#ff9d3c'; x.fill(); x.lineWidth = 2; x.strokeStyle = '#7a3e0c'; x.stroke(); x.restore();
+    };
+    x.globalAlpha = a; arrow(MZW * .32, HOR, 1); arrow(MZW * .68, HOR, -1); x.globalAlpha = 1;
+  }
+  const cellPos = ([r, c]) => [c + .5, r + .5];
+
+  // ----- movement: turn smoothly, then glide along the hallway, looking a little ahead so corners curve -----
+  const ease = t => t < .5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
+  function glide({ fromAng, toAng, pts, stopShort = 0, then, fall, turnFirst }) {
+    const P = pts; const segs = []; let L = 0;
+    for (let i = 1; i < P.length; i++) { const l = Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]); segs.push([P[i - 1], P[i], L, l]); L += l; }
+    L = Math.max(0, L - stopShort);
+    const at = s => { for (const [a, b, s0, l] of segs) if (s <= s0 + l) { const k = l ? Math.max(0, (s - s0) / l) : 0; return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k]; } return P[P.length - 1]; };
+    const lastDir = segs.length ? [segs[segs.length - 1][1][0] - segs[segs.length - 1][0][0], segs[segs.length - 1][1][1] - segs[segs.length - 1][0][1]] : [Math.cos(toAng), Math.sin(toAng)];
+    let dA = toAng - fromAng; while (dA > Math.PI) dA -= 2 * Math.PI; while (dA < -Math.PI) dA += 2 * Math.PI;
+    const TURN = 0, WALK = L / 3.4 * 1000 + 300, FALL = fall ? 900 : 0;
+    const wrap = a => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
+    const t0 = performance.now(), mine = {}; anim = mine; draw();
+    let finished = false;
+    const end = () => { if (finished) return; finished = true; if (anim === mine) anim = null; try { then(); } catch (e) { console.error(e); st.scr = st.cell ? 'fork' : 'title'; anim = null; draw(); } };
+    setTimeout(() => { if (!finished) end(); }, TURN + WALK + FALL + 1500);   // e.g. the tab was hidden mid-walk
+    const frame = now => {
+      if (finished) return;
+      const t = now - t0;
+      try {
+      if (t < TURN) { const p0 = P[0]; render(p0[0], p0[1], fromAng + dA * ease(t / TURN)); }
+      else if (t < TURN + WALK) {
+        const s = L * ease((t - TURN) / WALK), pos = at(s), la = s + .75;
+        let look;
+        if (la <= L + stopShort - .01) { const q = at(la); look = [q[0] - pos[0], q[1] - pos[1]]; }
+        else look = lastDir;
+        let ang = Math.hypot(look[0], look[1]) < 1e-3 ? toAng : Math.atan2(look[1], look[0]);
+        const k = (t - TURN) / WALK;
+        if (k < .3) ang = fromAng + wrap(ang - fromAng) * ease(k / .3);   // ease out of the standing direction
+        render(pos[0], pos[1], ang, { arrows: Math.max(0, 1 - k * 6) * (turnFirst ? 1 : 0) });
+      } else if (t < TURN + WALK + FALL) {
+        // a beat looking at it, then one more step forward… and down
+        const k = Math.max(0, ((t - TURN - WALK) / FALL - .3) / .7), pos = at(L), n = Math.hypot(lastDir[0], lastDir[1]) || 1, f = ease(Math.min(1, k * 1.4)) * .7;
+        render(pos[0] + lastDir[0] / n * f, pos[1] + lastDir[1] / n * f, Math.atan2(lastDir[1], lastDir[0]), { fade: Math.max(0, k * 1.6 - .6) });
+        if (k > .55) { const q = (k - .55) / .45; ctx.drawImage(cv, 0, 0, MZW, MZH, 0, -q * q * MZH, MZW, MZH); ctx.fillStyle = `rgba(0,0,0,${q})`; ctx.fillRect(0, 0, MZW, MZH); }
+      } else { end(); return; }
+      } catch (e) { end(); return; }
+      requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  }
+  const BACK = .95;   // where you stand at a fork: this far short of its centre
+  const restPos = () => { const [x, y] = cellPos(st.cell); return [x - MZ_D[st.d][1] * BACK, y - MZ_D[st.d][0] * BACK]; };
+  function restAtFork() { const [x, y] = restPos(); render(x, y, MZ_ANG[st.d], { arrows: 1 }); }
+  function startFloor() {
+    const s = startCell(), wk = mzWalk(rows(), s, F().face || 0);
+    st.path = ''; st.leaf = null; st.scr = 'walk';
+    glide({ fromAng: MZ_ANG[F().face || 0], toAng: MZ_ANG[F().face || 0], pts: wk.pts.map(cellPos), stopShort: BACK, then: () => { st.cell = wk.cell; st.d = wk.d; st.scr = 'fork'; save(); draw(); } });
+  }
+  function choose(i) {
+    if (st.scr !== 'fork' || anim || isDone()) return;
+    const ex = mzExits(rows(), st.cell, st.d); if (ex.length !== 2) return;
+    const nd = ex[i], wk = mzWalk(rows(), st.cell, nd);
+    st.path += i ? 'R' : 'L'; st.scr = 'walk';
+    const leaf = wk.kind === 'end' ? mzCell(rows(), wk.cell[0], wk.cell[1]) : null;
+    if (leaf && leaf !== 'H' && leaf !== 'W') st.deaths++;
+    glide({
+      fromAng: MZ_ANG[st.d], toAng: MZ_ANG[nd], pts: [restPos(), ...wk.pts.map(cellPos)], stopShort: leaf === 'H' ? .75 : leaf ? 1 : BACK, fall: leaf === 'H', turnFirst: true,
+      then: () => {
+        if (wk.kind === 'fork') { st.cell = wk.cell; st.d = wk.d; st.scr = 'fork'; save(); return draw(); }
+        st.leaf = leaf === 'S' ? (Object.keys(F().items || {}).find(k => !rows().some(r => r.includes(k))) || 'S') : leaf;
+        if (leaf === 'W') return finish();
+        if (leaf === 'H') { st.scr = 'black'; save(); draw(); return fetchNext(); }
+        st.scr = 'black'; save(); draw();   // the death screen the moment you stop
+      },
+    });
+  }
+  function space() {
+    if (anim || isDone()) return;
+    if (st.scr === 'title') return startFloor();
+    if (st.scr === 'black') {
+      if (st.leaf === 'H') { if (!st.floors[st.floor + 1]) return; st.floor++; }
+      else st.floor = 0;                      // any real death: all the way back to the beginning
+      msg = ''; startFloor();
+    }
+  }
+  async function fetchNext() {
+    const nf = st.floor + 1;
+    if (st.floors[nf]) return draw();
+    if (opts.preview) { if (cfg.allFloors) st.floors[nf] = cfg.allFloors[nf]; else msg = 'Preview stops here: the rest of the maze is kept on the server.'; return draw(); }
+    busy = true; draw();
+    try {
+      const res = await rpc('maze_floor', { p_token: token, p_puzzle: p.id, p_floor: st.floor, p_path: st.path, p_deaths: st.deaths });
+      if (res.ok && res.floor) st.floors[nf] = res.floor; else { msg = 'Something went wrong. Starting over.'; st.leaf = 'x'; }
+    } catch (e) { msg = 'Couldn’t reach the server. Press space to start over.'; st.leaf = 'x'; }
+    busy = false; save(); draw();
+  }
+  async function finish() {
+    if (opts.preview) { previewDone = true; st.scr = 'won'; return draw(); }
+    if (!S.me) return;
+    busy = true; draw();
+    try {
+      const res = await rpc('maze_floor', { p_token: token, p_puzzle: p.id, p_floor: st.floor, p_path: st.path, p_deaths: st.deaths });
+      if (res.ok) st.scr = 'won'; else { msg = 'The server didn’t accept that route.'; st.scr = 'black'; st.leaf = 'x'; }
+    } catch (e) { msg = e.message; st.scr = 'black'; st.leaf = 'x'; }
+    busy = false; save(); await refresh(); draw();
+  }
+  function onKey(e) {
+    if (!view.isConnected) { document.removeEventListener('keydown', onKey); return; }
+    if (!view.offsetParent || isDone()) return;
+    const t = e.target; if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const k = e.key;
+    if (k === 'ArrowLeft' || k === 'a' || k === 'A') { e.preventDefault(); choose(0); }
+    else if (k === 'ArrowRight' || k === 'd' || k === 'D') { e.preventDefault(); choose(1); }
+    else if (k === ' ' || k === 'Enter') { e.preventDefault(); space(); }
+  }
+  document.addEventListener('keydown', onKey);
+
+  function myName() { const me = S && S.me && (S.challengers || []).find(c => c.id === S.me); return me ? me.name.split(' ')[0] : 'CHALLENGER'; }
+  function draw() {
+    const done = isDone();
+    if (done && st.scr !== 'won') st.scr = 'won';
+    over.replaceChildren(); over.className = 'mzover';
+    let label = '';
+    if (st.scr === 'title') { over.classList.add('mid', 'plain'); over.append(el('div', 'pix small', 'PRESS SPACE TO'), el('div', 'pix huge', 'START'), el('div', 'pix tiny', '← → TO CHOOSE YOUR WAY')); label = 'Press space to start. Use left and right to choose your way.'; }
+    else if (st.scr === 'fork') { if (!anim) restAtFork(); label = 'The hallway ends at a wall. Left or right?'; }
+    else if (st.scr === 'walk') label = 'Walking…';
+    else if (st.scr === 'black') {
+      over.classList.add('black');
+      const it = (F().items || {})[st.leaf], hole = st.leaf === 'H';
+      over.append(el('div', 'pix txt', hole ? (cfg.holeText || 'YOU FALL INTO A HOLE AND DIE.') : it ? it.death : (msg || 'YOU DIE.')));
+      if (hole) over.appendChild(el('div', 'mzhole')); else over.appendChild(el('div', 'emo', it ? (it.icon || '💀') : '💀'));
+      over.appendChild(el('div', 'pix small', 'PRESS SPACE TO RESTART'));
+      label = (hole ? 'You fall into a hole and die.' : it ? it.death : 'You die.') + ' Press space to restart.';
+    } else if (st.scr === 'won') { over.classList.add('mid', 'won'); over.append(el('div', 'pix big', `CONGRATULATIONS, ${myName().toUpperCase()}!`), el('div', 'pix big', 'YOU SURVIVED THE MAZE!')); label = 'You survived the maze!'; }
+    cv.setAttribute('aria-label', label);
+    const waitHole = st.scr === 'black' && st.leaf === 'H' && !st.floors[st.floor + 1];
+    bL.disabled = bR.disabled = st.scr !== 'fork' || !!anim || done;
+    bS.disabled = !(st.scr === 'title' || st.scr === 'black') || !!anim || done || waitHole;
+    pad.hidden = done;
+    msgEl.textContent = st.scr === 'black' ? '' : msg;
+    w.win.hidden = !done;
+    if (done) {
+      if (opts.preview) w.txt.textContent = 'Preview: escaped. Nothing was recorded.';
+      else { fillWin(w, p, opts); const r = resultFor(p.id, S.me); if (r) w.stamp.textContent = `${r.attempts} ${r.attempts === 1 ? 'death' : 'deaths'} · ` + w.stamp.textContent; }
+    }
+  }
+  card._sync = () => { if (!anim) draw(); };
+  card._debug = () => ({ scr: st.scr, anim: !!anim, floor: st.floor, cell: st.cell, d: st.d, leaf: st.leaf, busy, ex: st.cell ? mzExits(rows(), st.cell, st.d).length : null });
+  if (document.fonts && document.fonts.load) document.fonts.load('20px "VT323"').then(() => { if (!anim) draw(); }, () => {});
+  draw();
+}
+
 /* ---------- riddle ---------- */
 function mountRiddle(card, p) {
   const P = p.config || {};
@@ -2273,7 +2574,7 @@ function bootPreview(P) {
   const r = el('div', 'row wrap'); r.append(el('span', 'chip live', (TYPE_LABEL[P.type] || P.type) + ' · preview'), el('span', 'legend', 'Exactly how challengers will see it. Nothing is recorded.'));
   v.append(r, el('h2', null, P.title));
   const card = el('div', 'card'); card.id = 'player'; v.appendChild(card);
-  const mount = { nonogram: mountNonogram, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper, story: mountStory, logic: mountLogic }[P.type];
+  const mount = { nonogram: mountNonogram, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper, story: mountStory, logic: mountLogic, maze: mountMaze }[P.type];
   if (mount) { store.set('jdc-nono-preview-' + P.id, null); mount(card, P, { preview: true }); }
   else card.appendChild(el('p', 'sub', 'No preview for this puzzle type yet.'));
   const again = el('button', 'btn small', 'Start over'); again.type = 'button'; again.onclick = () => bootPreview(P);
