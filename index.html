@@ -220,6 +220,20 @@ form.ans input:disabled { opacity: .5; }
 .ms.done .mc { cursor: default; }
 .msbar { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; align-items: center; }
 .msboom { text-align: center; color: var(--bad); font: 600 14px var(--mono); min-height: 18px; }
+/* connections */
+.cnsolved { display: flex; flex-direction: column; gap: 6px; }
+.cngroup { border-radius: 10px; padding: 10px 12px; text-align: center; color: #121620; display: flex; flex-direction: column; gap: 2px; animation: stIn .3s ease-out; }
+.cngroup b { font: 700 13px var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+.cngroup span { font: 600 13px var(--body); }
+.cngroup.l1 { background: #f5c84c; } .cngroup.l2 { background: #5fd4a0; } .cngroup.l3 { background: #6fa8ff; } .cngroup.l4 { background: #c18cff; }
+.cngrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.cntile { aspect-ratio: 1.15; min-width: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--panel2); color: var(--ink); font: 700 15px/1.15 var(--body); text-transform: uppercase; padding: 4px; cursor: pointer; overflow-wrap: normal; word-break: keep-all; hyphens: none; touch-action: manipulation; }
+.cntile.s7 { font-size: clamp(11px, 3.3vw, 15px); } .cntile.s8 { font-size: clamp(10px, 3vw, 14px); } .cntile.s10 { font-size: clamp(9px, 2.55vw, 13px); } .cntile.s12 { font-size: clamp(8px, 2.2vw, 12px); }
+.cntile.on { background: var(--signal); color: #121620; border-color: var(--signal); }
+.cntile:disabled { cursor: default; }
+.cngrid.shake { animation: cnShake .35s; }
+@keyframes cnShake { 0%,100% { transform: none; } 20% { transform: translateX(-6px); } 40% { transform: translateX(6px); } 60% { transform: translateX(-4px); } 80% { transform: translateX(4px); } }
+.cnrow { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
 /* maze */
 .mzview { position: relative; width: 100%; max-width: 560px; margin: 0 auto; border: 2px solid var(--signal); border-radius: 10px; overflow: hidden; background: #000; aspect-ratio: 16 / 9; container-type: inline-size; }
 .mzview canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; }
@@ -373,9 +387,9 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const RANK_PTS = [5, 3, 2, 1];   // 1st..4th on each puzzle
 const FINISH_PTS = 1;            // any later solve
 const POLL_MS = 12000;
-const TYPE_LABEL = { nonogram: 'Nonogram', riddle: 'Riddle', sudoku: 'Sudoku', wordsearch: 'Word search', findit: 'Find it', spotdiff: 'Spot the difference', minesweeper: 'Minesweeper', story: 'Story', logic: 'Logic grid', maze: 'Maze' };
+const TYPE_LABEL = { nonogram: 'Nonogram', riddle: 'Riddle', sudoku: 'Sudoku', wordsearch: 'Word search', findit: 'Find it', spotdiff: 'Spot the difference', minesweeper: 'Minesweeper', story: 'Story', logic: 'Logic grid', maze: 'Maze', connections: 'Connections' };
 const TRIES_TYPES = new Set(['riddle', 'findit', 'spotdiff', 'minesweeper', 'story', 'logic']);
-const FAIL_WORDS = { minesweeper: ['boom', 'booms'], story: ['fail', 'fails'], maze: ['death', 'deaths'] };   // types where attempts are failures, not guesses   // puzzle types where wrong attempts count
+const FAIL_WORDS = { minesweeper: ['boom', 'booms'], story: ['fail', 'fails'], maze: ['death', 'deaths'], connections: ['mistake', 'mistakes'] };   // types where attempts are failures, not guesses   // puzzle types where wrong attempts count
 const AV_COLORS = ['#ff9d3c', '#5fd4a0', '#7fb2ff', '#f5c84c', '#ff7eb6', '#b59cff', '#5fd0e0', '#d9925b'];
 
 /* ---------- tiny helpers ---------- */
@@ -589,7 +603,7 @@ function renderToday() {
     if (livePuzzles().length > 1) v.appendChild(el('p', 'legend', `${livePuzzles().length - 1} more live in History`));
     const card = el('div', 'card'); card.id = 'player'; v.appendChild(card);
     if (!S.me) card.appendChild(el('p', 'sub', 'Coach view: you can try the puzzle, but nothing is recorded.'));
-    const mount = { nonogram: mountNonogram, riddle: mountRiddle, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper, story: mountStory, logic: mountLogic, maze: mountMaze }[p.type];
+    const mount = { nonogram: mountNonogram, riddle: mountRiddle, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper, story: mountStory, logic: mountLogic, maze: mountMaze, connections: mountConnections }[p.type];
     if (mount) mount(card, p); else card.appendChild(el('p', 'sub', 'This puzzle type needs an app update. Refresh the page, or tell Joaquin.'));
     const side = el('div', 'card'); side.id = 'todaySide'; v.appendChild(side);
     if (S.me) rpc('open_puzzle', { p_token: token, p_puzzle: p.id }).then(refresh).catch(() => {});
@@ -875,6 +889,7 @@ function renderPreview(panel, p) {
   else if (p.type === 'story') mountStory(body, p, { preview: true });
   else if (p.type === 'logic') mountLogic(body, p, { preview: true });
   else if (p.type === 'maze') mountMaze(body, p, { preview: true });
+  else if (p.type === 'connections') mountConnections(body, p, { preview: true });
   else if (p.type === 'riddle') {
     const cfg = p.config || {};
     if (cfg.brief) body.appendChild(el('p', 'sub', cfg.brief));
@@ -2348,6 +2363,85 @@ function mountMaze(card, p, opts = {}) {
   draw();
 }
 
+/* ---------- connections ---------- */
+function mountConnections(card, p, opts = {}) {
+  const cfg = p.config || {}, tiles = cfg.tiles || [], LK = (opts.preview ? 'jdc-conn-preview-' : 'jdc-conn-') + p.id;
+  let local = { order: null, tried: [] }, sel = new Set(), msg = '', msgKind = '', busy = false, lt = null, pv = { found: [], mistakes: 0, lockUntil: 0 }, shake = false;
+  if (!opts.preview) { try { const s = JSON.parse(store.get(LK) || 'null'); if (s && Array.isArray(s.tried)) local = Object.assign(local, s); } catch (e) {} }
+  if (!Array.isArray(local.order) || local.order.length !== tiles.length || !tiles.every(t => local.order.includes(t))) local.order = tiles.slice();
+  const save = () => { if (!opts.preview) store.set(LK, JSON.stringify(local)); };
+  const mine = () => opts.preview ? null : mineFor(p.id);
+  const found = () => opts.preview ? pv.found : ((mine() || {}).found || []).filter(g => g && g.words);
+  const mistakes = () => opts.preview ? pv.mistakes : ((S.me && resultFor(p.id, S.me)) || {}).attempts || 0;
+  const lockLeft = () => opts.preview ? pv.lockUntil - Date.now() : (() => { const m = mine(), u = m && ms(m.locked_until); return u ? u - serverNow() : 0; })();
+  const isDone = () => opts.preview ? pv.found.length >= 4 : !!solvedState(p, opts);
+
+  if (cfg.brief) card.appendChild(el('p', 'sub', cfg.brief));
+  const solvedEl = el('div', 'cnsolved'); card.appendChild(solvedEl);
+  const grid = el('div', 'cngrid'); card.appendChild(grid);
+  const msgEl = el('p', 'msg'); msgEl.setAttribute('aria-live', 'polite'); card.appendChild(msgEl);
+  const row = el('div', 'cnrow'); card.appendChild(row);
+  const bShuf = el('button', 'btn small', 'Shuffle'), bClr = el('button', 'btn small', 'Deselect all'), bGo = el('button', 'btn primary', 'Submit');
+  [bShuf, bClr, bGo].forEach(b => { b.type = 'button'; row.appendChild(b); });
+  const meta = el('div', 'meta'); card.appendChild(meta);
+  const w = winCard('All four groups found'); card.appendChild(w.win);
+
+  bShuf.onclick = () => { const left = local.order.filter(t => !inFound(t)); for (let i = left.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [left[i], left[j]] = [left[j], left[i]]; } local.order = [...local.order.filter(inFound), ...left]; save(); draw(); };
+  bClr.onclick = () => { sel.clear(); msg = ''; draw(); };
+  bGo.onclick = submit;
+  function inFound(t) { return found().some(g => g.words.map(x => x.toUpperCase()).includes(t.toUpperCase())); }
+  async function submit() {
+    if (sel.size !== 4 || busy || isDone() || lockLeft() > 0) return;
+    const pick = [...sel].sort(), key = pick.join('|');
+    if (local.tried.includes(key)) { msg = 'Already guessed that one.'; msgKind = ''; return draw(); }
+    if (opts.preview) {
+      const gs = cfg.previewGroups || []; let best = 0, hit = null;
+      gs.forEach(g => { if (pv.found.some(f => f.name === g.name)) return; const n = g.words.filter(x => sel.has(x)).length; if (n === 4) hit = g; best = Math.max(best, n); });
+      if (hit) { pv.found.push(hit); sel.clear(); msg = ''; }
+      else { local.tried.push(key); pv.mistakes++; if (pv.mistakes % (cfg.lockEvery || 4) === 0) pv.lockUntil = Date.now() + (cfg.lockSeconds || 30) * 1000; msg = best === 3 ? 'One away…' : 'Not a group.'; msgKind = 'bad'; shake = true; }
+      return draw();
+    }
+    if (!S.me) return;
+    busy = true; draw();
+    try {
+      const res = await rpc('connections_guess', { p_token: token, p_puzzle: p.id, p_words: pick });
+      if (res.error) { msg = res.error; msgKind = 'bad'; }
+      else if (res.correct) { sel.clear(); msg = ''; }
+      else if (res.locked_until && !res.attempts) { msg = ''; }
+      else { local.tried.push(key); save(); msg = res.oneAway ? 'One away…' : 'Not a group.'; msgKind = 'bad'; shake = true; }
+    } catch (e) { msg = e.message; msgKind = 'bad'; }
+    busy = false; await refresh(); draw();
+  }
+  const LV = ['', 'l1', 'l2', 'l3', 'l4'];
+  function draw() {
+    const done = isDone(), F = found().slice().sort((a, b) => (a.level || 0) - (b.level || 0) || 0);
+    solvedEl.replaceChildren(...found().map(g => { const d = el('div', 'cngroup ' + (LV[g.level] || 'l1')); d.append(el('b', null, g.name), el('span', null, g.words.join(', '))); return d; }));
+    grid.replaceChildren();
+    local.order.filter(t => !inFound(t)).forEach(t => {
+      const b = el('button', 'cntile' + (sel.has(t) ? ' on' : ''), t); b.type = 'button'; b.setAttribute('aria-pressed', String(sel.has(t)));
+      const lw = Math.max(...t.split(' ').map(x => x.length));   // size by the longest word so words never break mid-word
+      b.classList.add(lw <= 7 ? 's7' : lw <= 8 ? 's8' : lw <= 10 ? 's10' : 's12');
+      b.disabled = done || busy;
+      b.onclick = () => { if (sel.has(t)) sel.delete(t); else if (sel.size < 4) sel.add(t); msg = ''; draw(); };
+      grid.appendChild(b);
+    });
+    if (shake) { grid.classList.remove('shake'); void grid.offsetWidth; grid.classList.add('shake'); shake = false; }
+    const left = lockLeft(); clearTimeout(lt);
+    if (left > 0 && !done) { msgEl.textContent = `Too many mistakes. Wait ${Math.ceil(left / 1000)}s.`; msgEl.className = 'msg wait'; lt = setTimeout(draw, 500); }
+    else { msgEl.textContent = msg; msgEl.className = 'msg' + (msgKind ? ' ' + msgKind : ''); }
+    bGo.disabled = sel.size !== 4 || busy || done || left > 0; bClr.disabled = !sel.size || done; bShuf.disabled = done;
+    row.hidden = done; grid.hidden = done;
+    const m = mistakes();
+    meta.replaceChildren(el('span', null, `Groups ${found().length} / 4`), el('span', null, `Mistakes ${m}`));
+    w.win.hidden = !done;
+    if (done) {
+      if (opts.preview) w.txt.textContent = `Preview: solved with ${m} ${m === 1 ? 'mistake' : 'mistakes'}. Nothing was recorded.`;
+      else { fillWin(w, p, opts); w.stamp.textContent = `${m} ${m === 1 ? 'mistake' : 'mistakes'} · ` + w.stamp.textContent; }
+    }
+  }
+  card._sync = draw; draw();
+}
+
 /* ---------- riddle ---------- */
 function mountRiddle(card, p) {
   const P = p.config || {};
@@ -2574,7 +2668,7 @@ function bootPreview(P) {
   const r = el('div', 'row wrap'); r.append(el('span', 'chip live', (TYPE_LABEL[P.type] || P.type) + ' · preview'), el('span', 'legend', 'Exactly how challengers will see it. Nothing is recorded.'));
   v.append(r, el('h2', null, P.title));
   const card = el('div', 'card'); card.id = 'player'; v.appendChild(card);
-  const mount = { nonogram: mountNonogram, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper, story: mountStory, logic: mountLogic, maze: mountMaze }[P.type];
+  const mount = { nonogram: mountNonogram, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper, story: mountStory, logic: mountLogic, maze: mountMaze, connections: mountConnections }[P.type];
   if (mount) { store.set('jdc-nono-preview-' + P.id, null); mount(card, P, { preview: true }); }
   else card.appendChild(el('p', 'sub', 'No preview for this puzzle type yet.'));
   const again = el('button', 'btn small', 'Start over'); again.type = 'button'; again.onclick = () => bootPreview(P);
