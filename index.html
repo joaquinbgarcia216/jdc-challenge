@@ -220,6 +220,20 @@ form.ans input:disabled { opacity: .5; }
 .ms.done .mc { cursor: default; }
 .msbar { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; align-items: center; }
 .msboom { text-align: center; color: var(--bad); font: 600 14px var(--mono); min-height: 18px; }
+/* document (email) */
+.mail { background: #fbfaf7; color: #1d2230; border-radius: 12px; padding: 16px 16px 18px; font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; text-align: left; box-shadow: 0 1px 0 rgba(0,0,0,.2); }
+.mail .mailsubj { margin: 0 0 12px; font-family: inherit; font-size: 20px; font-weight: 600; line-height: 1.3; color: #111; letter-spacing: 0; text-transform: none; }
+.mailhead { display: flex; gap: 10px; align-items: center; padding-bottom: 12px; border-bottom: 1px solid #e3e1db; margin-bottom: 12px; }
+.mailav { width: 36px; height: 36px; border-radius: 50%; background: #5b6b8c; color: #fff; display: grid; place-items: center; font-family: inherit; font-size: 16px; font-weight: 600; flex: none; }
+.mailmeta { flex: 1; min-width: 0; }
+.mailfrom { display: flex; justify-content: space-between; gap: 8px; } .mailfrom b { font-weight: 600; }
+.mailtime, .mailto { color: #6b7080; font-size: 13px; }
+.mailbody p { margin: 0 0 12px; } .mailbody ul { margin: 0 0 12px; padding-left: 20px; } .mailbody li { margin: 2px 0; }
+.maillines { margin: 0 0 12px; } .maillines div { margin: 1px 0; }
+.mailsig { color: #3a3f4c; }
+.mailbody b { font-weight: 700; }
+.dochints { margin: 0; padding-left: 22px; color: var(--muted); font-size: 14px; display: flex; flex-direction: column; gap: 4px; }
+.dochints li::marker { color: var(--signal); }
 /* connections */
 .cnsolved { display: flex; flex-direction: column; gap: 6px; }
 .cngroup { border-radius: 10px; padding: 10px 12px; text-align: center; color: #121620; display: flex; flex-direction: column; gap: 2px; animation: stIn .3s ease-out; }
@@ -387,8 +401,8 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const RANK_PTS = [5, 3, 2, 1];   // 1st..4th on each puzzle
 const FINISH_PTS = 1;            // any later solve
 const POLL_MS = 12000;
-const TYPE_LABEL = { nonogram: 'Nonogram', riddle: 'Riddle', sudoku: 'Sudoku', wordsearch: 'Word search', findit: 'Find it', spotdiff: 'Spot the difference', minesweeper: 'Minesweeper', story: 'Story', logic: 'Logic grid', maze: 'Maze', connections: 'Connections' };
-const TRIES_TYPES = new Set(['riddle', 'findit', 'spotdiff', 'minesweeper', 'story', 'logic']);
+const TYPE_LABEL = { nonogram: 'Nonogram', riddle: 'Riddle', sudoku: 'Sudoku', wordsearch: 'Word search', findit: 'Find it', spotdiff: 'Spot the difference', minesweeper: 'Minesweeper', story: 'Story', logic: 'Logic grid', maze: 'Maze', connections: 'Connections', document: 'Document' };
+const TRIES_TYPES = new Set(['riddle', 'findit', 'spotdiff', 'minesweeper', 'story', 'logic', 'document']);
 const FAIL_WORDS = { minesweeper: ['boom', 'booms'], story: ['fail', 'fails'], maze: ['death', 'deaths'], connections: ['mistake', 'mistakes'] };   // types where attempts are failures, not guesses   // puzzle types where wrong attempts count
 const AV_COLORS = ['#ff9d3c', '#5fd4a0', '#7fb2ff', '#f5c84c', '#ff7eb6', '#b59cff', '#5fd0e0', '#d9925b'];
 
@@ -448,11 +462,14 @@ const serverNow = () => Date.now() + skew;
 const roleOf = id => ((C && C.challengers.find(c => c.id === id)) || people().find(c => c.id === id) || {}).role || 'challenger';
 const isGuest = id => roleOf(id) === 'guest';
 // Guests appear in the solve order but never take a place or points from challengers.
+// Paid hints on document puzzles add time: config.hintPenalty seconds each (default 2 min).
+const hintPenaltyMs = pid => { const q = S && (S.puzzles || []).find(x => x.id === pid); return q && q.type === 'document' ? ((q.config || {}).hintPenalty || 120) * 1000 : 0; };
+const solveMs = r => ms(r.solved_at) - ms(r.opened_at) + (r.hints || 0) * hintPenaltyMs(r.puzzle_id);
 function standings(pid, src) {
   const rows = (src || S.results).filter(r => r.puzzle_id === pid);
   let place = 0;
   // Ranked by solve time (opened → solved); ties go to whoever finished first.
-  const took = r => ms(r.solved_at) - ms(r.opened_at);
+  const took = solveMs;
   const solved = rows.filter(r => r.solved_at).sort((a, b) => took(a) - took(b) || ms(a.solved_at) - ms(b.solved_at)).map(r => {
     const id = r.challenger_id;
     if (isGuest(id)) return { r, id, guest: true, place: null, pts: 0 };
@@ -485,7 +502,8 @@ function standingsList(p, showTrying) {
   const { solved, trying } = standings(p.id);
   const ul = el('ul', 'list');
   solved.forEach(x => {
-    const bits = ['took ' + fmtDur(ms(x.r.solved_at) - ms(x.r.opened_at))];
+    const bits = ['took ' + fmtDur(solveMs(x.r))];
+    if (x.r.hints) bits.push(`${x.r.hints} ${x.r.hints === 1 ? 'hint' : 'hints'}`);
     if (FAIL_WORDS[p.type]) bits.push(`${x.r.attempts} ${FAIL_WORDS[p.type][x.r.attempts === 1 ? 0 : 1]}`);
     else if (TRIES_TYPES.has(p.type)) bits.push(`${x.r.attempts + 1} ${x.r.attempts ? 'tries' : 'try'}`);
     if (x.r.hint_used) bits.push('hint');
@@ -603,7 +621,7 @@ function renderToday() {
     if (livePuzzles().length > 1) v.appendChild(el('p', 'legend', `${livePuzzles().length - 1} more live in History`));
     const card = el('div', 'card'); card.id = 'player'; v.appendChild(card);
     if (!S.me) card.appendChild(el('p', 'sub', 'Coach view: you can try the puzzle, but nothing is recorded.'));
-    const mount = { nonogram: mountNonogram, riddle: mountRiddle, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper, story: mountStory, logic: mountLogic, maze: mountMaze, connections: mountConnections }[p.type];
+    const mount = { nonogram: mountNonogram, riddle: mountRiddle, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper, story: mountStory, logic: mountLogic, maze: mountMaze, connections: mountConnections, document: mountDocument }[p.type];
     if (mount) mount(card, p); else card.appendChild(el('p', 'sub', 'This puzzle type needs an app update. Refresh the page, or tell Joaquin.'));
     const side = el('div', 'card'); side.id = 'todaySide'; v.appendChild(side);
     if (S.me) rpc('open_puzzle', { p_token: token, p_puzzle: p.id }).then(refresh).catch(() => {});
@@ -747,7 +765,7 @@ function renderCoach() {
       tr.appendChild(nt);
       tr.appendChild(el('td', x.r ? (x.r.solved_at ? 'st-ok' : 'st-wip') : 'st-no', x.r ? (x.r.solved_at ? 'Solved' + (x.r.hint_used ? ' (hint)' : '') : 'Working' + (x.r.hint_used ? ' (hint)' : '')) : 'Not opened'));
       tr.appendChild(el('td', 'num', x.r && TRIES_TYPES.has(p.type) ? String(x.r.attempts) : '—'));
-      tr.appendChild(el('td', 'num', x.r && x.r.solved_at ? fmtDur(ms(x.r.solved_at) - ms(x.r.opened_at)) : '—'));
+      tr.appendChild(el('td', 'num', x.r && x.r.solved_at ? fmtDur(solveMs(x.r)) : '—'));
       body.appendChild(tr);
     });
     tb.appendChild(body); tw.appendChild(tb); card.appendChild(tw);
@@ -890,6 +908,7 @@ function renderPreview(panel, p) {
   else if (p.type === 'logic') mountLogic(body, p, { preview: true });
   else if (p.type === 'maze') mountMaze(body, p, { preview: true });
   else if (p.type === 'connections') mountConnections(body, p, { preview: true });
+  else if (p.type === 'document') mountDocument(body, p, { preview: true });
   else if (p.type === 'riddle') {
     const cfg = p.config || {};
     if (cfg.brief) body.appendChild(el('p', 'sub', cfg.brief));
@@ -1023,7 +1042,7 @@ function fillWin(w, p, opts, previewDone) {
   if (opts.preview) { w.txt.textContent = previewDone ? 'Preview: solved. Nothing was recorded.' : ''; w.stamp.textContent = ''; return; }
   const r = resultFor(p.id, S.me), me = standings(p.id).solved.find(x => x.id === S.me);
   w.txt.textContent = me && me.place ? `You’re ${ordinal(me.place)} fastest so far (${me.pts} ${me.pts === 1 ? 'point' : 'points'}).` : 'Solved.';
-  w.stamp.textContent = r ? 'Solved in ' + fmtDur(ms(r.solved_at) - ms(r.opened_at)) : '';
+  w.stamp.textContent = r ? 'Solved in ' + fmtDur(solveMs(r)) : '';
 }
 async function submitGrid(p, answer, statusEl) {
   statusEl.textContent = 'Checking with the server…';
@@ -2442,6 +2461,109 @@ function mountConnections(card, p, opts = {}) {
   card._sync = draw; draw();
 }
 
+/* ---------- document (an ordinary-looking email or document with something hidden in it) ---------- */
+function docInline(text) {   // **bold** is the only markup; everything else (including stray capitals) is shown exactly as written
+  const frag = document.createDocumentFragment();
+  String(text || '').split(/(\*\*[^*]+\*\*)/).forEach(part => {
+    if (/^\*\*[^*]+\*\*$/.test(part)) frag.appendChild(el('b', null, part.slice(2, -2)));
+    else if (part) frag.appendChild(document.createTextNode(part));
+  });
+  return frag;
+}
+const docNorm = s => String(s || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\b(a|an|the|my|your)\b/g, ' ').replace(/\s+/g, '').replace(/s$/, '');
+function mountDocument(card, p, opts = {}) {
+  const cfg = p.config || {}, NH = cfg.hintCount || (cfg.previewHints || []).length || 0, PEN = cfg.hintPenalty || 120;
+  let busy = false, msg = '', msgKind = '', lt = null, pv = { hints: 0, wrong: 0, solved: false, lockUntil: 0, opened: Date.now(), solvedAt: 0 };
+  const isDone = () => opts.preview ? pv.solved : !!solvedState(p, opts);
+  const myRes = () => opts.preview ? null : (S.me ? resultFor(p.id, S.me) : null);
+  const hintsUsed = () => opts.preview ? pv.hints : ((myRes() || {}).hints || 0);
+  const hintList = () => opts.preview ? (cfg.previewHints || []).slice(0, pv.hints) : ((mineFor(p.id) || {}).hint_list || []);
+  const wrong = () => opts.preview ? pv.wrong : ((myRes() || {}).attempts || 0);
+  const lockLeft = () => opts.preview ? pv.lockUntil - Date.now() : (() => { const m = mineFor(p.id), u = m && ms(m.locked_until); return u ? u - serverNow() : 0; })();
+
+  if (cfg.brief) card.appendChild(el('p', 'sub', cfg.brief));
+  // the email itself
+  const mail = el('article', 'mail');
+  const head = el('div', 'mailhead');
+  head.appendChild(el('div', 'mailav', (cfg.fromName || cfg.from || '?').trim().charAt(0)));
+  const hd = el('div', 'mailmeta');
+  const l1 = el('div', 'mailfrom'); l1.append(el('b', null, cfg.fromName || cfg.from || ''), el('span', 'mailtime', cfg.sent || ''));
+  hd.append(l1, el('div', 'mailto', 'to ' + (cfg.to || 'me')));
+  head.appendChild(hd);
+  mail.append(el('h3', 'mailsubj', cfg.subject || ''), head);
+  const body = el('div', 'mailbody');
+  (cfg.blocks || []).forEach(b => {
+    if (b.p != null) { const pe = el('p'); pe.appendChild(docInline(b.p)); body.appendChild(pe); }
+    else if (b.lines) { const d = el('div', 'maillines'); b.lines.forEach(t => { const ln = el('div'); ln.appendChild(docInline(t)); d.appendChild(ln); }); body.appendChild(d); }
+    else if (b.list) { if (b.title) { const tp = el('p'); tp.appendChild(docInline(b.title)); body.appendChild(tp); } const ul = el('ul'); b.list.forEach(t => { const li = el('li'); li.appendChild(docInline(t)); ul.appendChild(li); }); body.appendChild(ul); }
+    else if (b.sig) { const s = el('p', 'mailsig'); b.sig.split('\n').forEach((t, i) => { if (i) s.appendChild(el('br')); s.appendChild(docInline(t)); }); body.appendChild(s); }
+  });
+  mail.appendChild(body);
+  card.appendChild(mail);
+
+  // answer box, hints, result
+  const form = el('form', 'ans'); form.autocomplete = 'off';
+  const inp = el('input'); inp.type = 'text'; inp.placeholder = cfg.placeholder || 'Your answer'; inp.setAttribute('aria-label', 'Your answer');
+  inp.setAttribute('autocapitalize', 'off'); inp.setAttribute('autocorrect', 'off'); inp.spellcheck = false;
+  const go = el('button', 'btn primary', 'Submit'); go.type = 'submit'; form.append(inp, go);
+  const msgEl = el('p', 'msg'); msgEl.setAttribute('aria-live', 'polite');
+  const meta = el('div', 'meta'), cnt = el('span'), hb = el('button', 'hintbtn'); hb.type = 'button'; meta.append(cnt, hb);
+  const hintsEl = el('ol', 'dochints');
+  const w = winCard(cfg.winTitle || 'Cracked it');
+  card.append(form, msgEl, meta, hintsEl, w.win);
+  const mmss = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const raw = inp.value.trim(); if (!raw || busy || isDone() || lockLeft() > 0) return;
+    if (opts.preview) {
+      if ((cfg.previewAnswers || []).map(docNorm).includes(docNorm(raw))) { pv.solved = true; pv.solvedAt = Date.now(); msg = ''; }
+      else { pv.wrong++; if (pv.wrong % (cfg.lockEvery || 3) === 0) pv.lockUntil = Date.now() + (cfg.lockSeconds || 30) * 1000; msg = 'Not it.'; msgKind = 'bad'; shake(); }
+      return draw();
+    }
+    if (!S.me) return;
+    busy = true; draw();
+    try {
+      const res = await rpc('submit_doc', { p_token: token, p_puzzle: p.id, p_guess: raw });
+      if (res.correct) msg = '';
+      else if (res.empty) { msg = 'Type an actual answer.'; msgKind = 'bad'; }
+      else if (res.locked_until && res.attempts && !raw) msg = '';
+      else { msg = 'Not it.'; msgKind = 'bad'; shake(); }
+    } catch (err) { msg = err.message; msgKind = 'bad'; }
+    busy = false; await refresh(); draw();
+  });
+  function shake() { inp.classList.remove('shake'); void inp.offsetWidth; inp.classList.add('shake'); inp.select(); }
+  hb.onclick = async () => {
+    if (busy || isDone() || hintsUsed() >= NH) return;
+    if (!hb.dataset.armed) { hb.dataset.armed = '1'; hb.textContent = `Sure? Adds ${mmss(PEN)} to your time`; setTimeout(() => { delete hb.dataset.armed; draw(); }, 4000); return; }
+    delete hb.dataset.armed;
+    if (opts.preview) { pv.hints++; return draw(); }
+    busy = true; draw();
+    try { await rpc('doc_hint', { p_token: token, p_puzzle: p.id }); } catch (e) { msg = e.message; msgKind = 'bad'; }
+    busy = false; await refresh(); draw();
+  };
+  function draw() {
+    const done = isDone(), used = hintsUsed(), left = lockLeft();
+    cnt.replaceChildren('Wrong guesses ', el('b', null, String(wrong())));
+    hb.hidden = !NH || (done && !used);
+    hb.disabled = busy || done || used >= NH;
+    if (!hb.dataset.armed) hb.textContent = used >= NH ? `All ${NH} hints used` : done ? `${used} ${used === 1 ? 'hint' : 'hints'} used` : `Hint ${used + 1} of ${NH} (+${mmss(PEN)})`;
+    hintsEl.replaceChildren(...hintList().map(h => el('li', null, h)));
+    hintsEl.hidden = !hintList().length;
+    form.hidden = done;
+    inp.disabled = go.disabled = busy || left > 0 || (!opts.preview && !S.me);
+    clearTimeout(lt);
+    if (left > 0 && !done) { msgEl.className = 'msg wait'; msgEl.textContent = `Too many guesses. Try again in ${Math.ceil(left / 1000)}s.`; lt = setTimeout(draw, 300); }
+    else { msgEl.className = 'msg' + (msgKind ? ' ' + msgKind : ''); msgEl.textContent = done ? '' : msg; }
+    w.win.hidden = !done;
+    if (done) {
+      if (opts.preview) { const t = Math.round((pv.solvedAt - pv.opened) / 1000) + used * PEN; w.txt.textContent = `Preview: solved in ${mmss(t)} with ${used} ${used === 1 ? 'hint' : 'hints'}. Nothing was recorded.`; }
+      else { fillWin(w, p, opts); const r = myRes(); if (r) w.stamp.textContent = `${r.attempts + 1} ${r.attempts ? 'tries' : 'try'} · ${used} ${used === 1 ? 'hint' : 'hints'}${used ? ` (+${mmss(used * PEN)})` : ''} · ` + w.stamp.textContent; }
+    }
+  }
+  card._sync = draw; draw();
+}
+
 /* ---------- riddle ---------- */
 function mountRiddle(card, p) {
   const P = p.config || {};
@@ -2668,7 +2790,7 @@ function bootPreview(P) {
   const r = el('div', 'row wrap'); r.append(el('span', 'chip live', (TYPE_LABEL[P.type] || P.type) + ' · preview'), el('span', 'legend', 'Exactly how challengers will see it. Nothing is recorded.'));
   v.append(r, el('h2', null, P.title));
   const card = el('div', 'card'); card.id = 'player'; v.appendChild(card);
-  const mount = { nonogram: mountNonogram, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper, story: mountStory, logic: mountLogic, maze: mountMaze, connections: mountConnections }[P.type];
+  const mount = { nonogram: mountNonogram, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper, story: mountStory, logic: mountLogic, maze: mountMaze, connections: mountConnections, document: mountDocument }[P.type];
   if (mount) { store.set('jdc-nono-preview-' + P.id, null); mount(card, P, { preview: true }); }
   else card.appendChild(el('p', 'sub', 'No preview for this puzzle type yet.'));
   const again = el('button', 'btn small', 'Start over'); again.type = 'button'; again.onclick = () => bootPreview(P);
