@@ -95,6 +95,19 @@ textarea { min-height: 90px; font-size: 13px; resize: vertical; }
 .step span { font-size: 11px; font-weight: 500; }
 .p1 .step { height: 84px; background: var(--gold); } .p2 .step { height: 62px; background: var(--silver); } .p3 .step { height: 46px; background: var(--bronze); }
 
+.filters { display: flex; flex-direction: column; gap: 8px; }
+.filters .seg { display: grid; grid-auto-columns: 1fr; }
+.filters .seg button { font-size: 12px; padding: 9px 6px; }
+.chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; margin-inline: -16px; padding-inline: 16px; }
+.chips::-webkit-scrollbar { display: none; }
+.chips button { flex: none; background: var(--panel); border: 1px solid var(--line); color: var(--muted); font: 12px var(--mono); letter-spacing: .04em; padding: 7px 11px; border-radius: 999px; cursor: pointer; white-space: nowrap; }
+.chips button[aria-pressed="true"] { color: var(--signal); border-color: var(--signal); background: var(--signal-dim); }
+.list li.more { display: block; padding: 8px 0 0; }
+.list li.more button { width: 100%; }
+.gate { display: flex; flex-direction: column; gap: 12px; align-items: stretch; padding: 6px 0; }
+.gate .big { font-family: var(--display); font-weight: 700; font-size: 18px; }
+.hist .play { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-bottom: 6px; }
+
 /* history */
 .hist { display: flex; flex-direction: column; gap: 10px; }
 .hist details { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
@@ -448,6 +461,11 @@ let lastTapAt = 0, practiceRetry = null;
 let coachMode = null;        // null | 'edit' | 'preview' for the selected puzzle
 let view = coachPass && store.get('jdc-watch') === '1' ? 'coach' : 'today', mountedKey = null, coachPick = null, picking = null;
 let bannerMsg = '', bannerErr = false;
+let playing = null;          // a puzzle opened from History (null = the live one on Today)
+let rankWho = store.get('jdc-rank-who'), rankType = null;   // leaderboard filters
+let pickQ = '';              // name search on the picker
+const expanded = new Set();  // puzzle ids whose full solve list is showing
+const LIST_CAP = 8;
 
 const people = () => S ? S.challengers : [];
 const nameOf = id => (people().find(c => c.id === id) || (C && C.challengers.find(c => c.id === id)) || { name: 'Former challenger' }).name;
@@ -465,23 +483,25 @@ const isGuest = id => roleOf(id) === 'guest';
 // Paid hints on document puzzles add time: config.hintPenalty seconds each (default 2 min).
 const hintPenaltyMs = pid => { const q = S && (S.puzzles || []).find(x => x.id === pid); return q && q.type === 'document' ? ((q.config || {}).hintPenalty || 120) * 1000 : 0; };
 const solveMs = r => ms(r.solved_at) - ms(r.opened_at) + (r.hints || 0) * hintPenaltyMs(r.puzzle_id);
-function standings(pid, src) {
+// group: 'challenger' (default, the official board), 'guest', or 'all'. Places and points go only to people in the group.
+function standings(pid, src, group) {
   const rows = (src || S.results).filter(r => r.puzzle_id === pid);
+  const inGroup = id => group === 'all' || (group === 'guest') === isGuest(id);
   let place = 0;
   // Ranked by solve time (opened → solved); ties go to whoever finished first.
   const took = solveMs;
   const solved = rows.filter(r => r.solved_at).sort((a, b) => took(a) - took(b) || ms(a.solved_at) - ms(b.solved_at)).map(r => {
     const id = r.challenger_id;
-    if (isGuest(id)) return { r, id, guest: true, place: null, pts: 0 };
-    place++; return { r, id, place, pts: place <= RANK_PTS.length ? RANK_PTS[place - 1] : FINISH_PTS };
+    if (!inGroup(id)) return { r, id, guest: isGuest(id), out: true, place: null, pts: 0 };
+    place++; return { r, id, guest: isGuest(id), place, pts: place <= RANK_PTS.length ? RANK_PTS[place - 1] : FINISH_PTS };
   });
   const trying = rows.filter(r => !r.solved_at).sort((a, b) => b.attempts - a.attempts).map(r => ({ r, id: r.challenger_id, guest: isGuest(r.challenger_id) }));
   return { solved, trying };
 }
-function overall() {
+function overall(group, type) {
   const t = {};
-  people().filter(c => c.role !== 'guest').forEach(c => t[c.id] = { id: c.id, pts: 0, wins: 0, podiums: 0, solved: 0 });
-  released().forEach(p => standings(p.id).solved.filter(x => !x.guest).forEach(x => {
+  people().filter(c => group === 'all' || (group === 'guest') === (c.role === 'guest')).forEach(c => t[c.id] = { id: c.id, pts: 0, wins: 0, podiums: 0, solved: 0 });
+  released().filter(p => !type || p.type === type).forEach(p => standings(p.id, null, group).solved.filter(x => x.place).forEach(x => {
     const r = t[x.id] || (t[x.id] = { id: x.id, pts: 0, wins: 0, podiums: 0, solved: 0 });
     r.pts += x.pts; r.solved++; if (x.place === 1) r.wins++; if (x.place <= 3) r.podiums++;
   }));
@@ -500,7 +520,7 @@ function personRow(rank, p, line, ptsText, ptsLabel) {
 }
 function standingsList(p, showTrying) {
   const { solved, trying } = standings(p.id);
-  const ul = el('ul', 'list');
+  const ul = el('ul', 'list'), rows = [];
   solved.forEach(x => {
     const bits = ['took ' + fmtDur(solveMs(x.r))];
     if (x.r.hints) bits.push(`${x.r.hints} ${x.r.hints === 1 ? 'hint' : 'hints'}`);
@@ -508,10 +528,18 @@ function standingsList(p, showTrying) {
     else if (TRIES_TYPES.has(p.type)) bits.push(`${x.r.attempts + 1} ${x.r.attempts ? 'tries' : 'try'}`);
     if (x.r.hint_used) bits.push('hint');
     if (x.guest) bits.unshift('guest');
-    ul.appendChild(personRow(x.place, personOf(x.id), bits.join(' · '), x.guest ? '' : '+' + x.pts, x.guest ? '' : 'PTS'));
+    const li = personRow(x.place, personOf(x.id), bits.join(' · '), x.place ? '+' + x.pts : '', x.place ? 'PTS' : '');
+    if (x.place && x.place <= RANK_PTS.length) li.dataset.keep = '1';   // the point-scoring places always show
+    rows.push(li);
   });
-  if (showTrying) trying.forEach(x => ul.appendChild(personRow(null, personOf(x.id), (x.guest ? 'guest · ' : '') + (TRIES_TYPES.has(p.type) ? `working · ${x.r.attempts} wrong` : 'working on it'), '', '')));
-  if (!ul.children.length) ul.appendChild(el('li', 'empty', 'Nobody has solved this one yet.'));
+  if (showTrying) trying.forEach(x => rows.push(personRow(null, personOf(x.id), (x.guest ? 'guest · ' : '') + (TRIES_TYPES.has(p.type) ? `working · ${x.r.attempts} wrong` : 'working on it'), '', '')));
+  if (!rows.length) rows.push(el('li', 'empty', showTrying ? 'Nobody has opened this one yet.' : 'Nobody has solved this one yet.'));
+  // Long lists: top few, plus your own row, until "Show all" is tapped.
+  if (rows.length > LIST_CAP + 2 && !expanded.has(p.id)) {
+    rows.forEach((li, i) => { if (i < LIST_CAP || li.classList.contains('me') || li.dataset.keep) ul.appendChild(li); });
+    const more = el('li', 'more'), b = el('button', 'btn small', `Show all ${rows.length}`); b.type = 'button';
+    b.onclick = () => { expanded.add(p.id); route(); }; more.appendChild(b); ul.appendChild(more);
+  } else rows.forEach(li => ul.appendChild(li));
   return ul;
 }
 const chipFor = p => el('span', 'chip' + (p.status === 'live' ? ' live' : ''), (TYPE_LABEL[p.type] || p.type) + (p.status === 'live' ? ' · live' : p.status === 'draft' ? ' · draft' : ''));
@@ -519,23 +547,40 @@ function setBanner(msg, err) { bannerMsg = msg || ''; bannerErr = !!err; $('bann
 
 /* ---------- name picker ---------- */
 function renderPick() {
-  const v = $('v-pick'); v.replaceChildren();
+  const v = $('v-pick');
+  const qEl = $('pickQ'), qFocus = qEl && document.activeElement === qEl, qPos = qFocus ? qEl.selectionStart : 0;
+  v.replaceChildren();
   v.append(el('h2', null, 'Who’s playing?'), el('p', 'sub', 'Tap your name. First time, you make a 4-digit PIN. On a new phone, just enter it again.'));
   const list = people();
   if (!list.length) v.appendChild(el('p', 'empty', 'The team list is empty. Ask Joaquin to add you.'));
   const groups = [['Challengers', list.filter(c => c.role !== 'guest')], ['Guests', list.filter(c => c.role === 'guest')]];
+  const applyQ = () => {
+    const q = pickQ.trim().toLowerCase();
+    v.querySelectorAll('.names').forEach(g => {
+      let any = false;
+      g.querySelectorAll('button').forEach(b => { const hit = !q || b.dataset.name.includes(q) || b.getAttribute('aria-pressed') === 'true'; b.hidden = !hit; any = any || hit; });
+      g.hidden = !any; if (g.previousElementSibling && g.previousElementSibling.tagName === 'H3') g.previousElementSibling.hidden = !any;
+    });
+    const none = $('pickNone'); if (none) none.hidden = !!v.querySelector('.names:not([hidden])');
+  };
+  if (list.length > 10) {
+    const q = el('input'); q.type = 'text'; q.id = 'pickQ'; q.placeholder = 'Search your name'; q.value = pickQ; q.setAttribute('aria-label', 'Search your name'); q.setAttribute('autocomplete', 'off'); q.style.fontFamily = 'var(--body)';
+    q.oninput = () => { pickQ = q.value; applyQ(); };
+    v.appendChild(q);
+  } else pickQ = '';
   groups.forEach(([label, arr]) => {
     if (!arr.length) return;
     if (groups[1][1].length) v.appendChild(el('h3', null, label));
     const grid = el('div', 'names');
     arr.forEach(c => {
-      const b = el('button'); b.type = 'button'; b.setAttribute('aria-pressed', String(picking === c.id));
+      const b = el('button'); b.type = 'button'; b.dataset.name = c.name.toLowerCase(); b.setAttribute('aria-pressed', String(picking === c.id));
       b.append(el('b', null, c.name), el('span', null, picking === c.id ? 'Selected' : c.claimed ? 'Enter PIN' : 'New · set a PIN'));
       b.onclick = () => { picking = c.id; renderPick(); const i = $('pinIn'); if (i) i.focus(); };
       grid.appendChild(b);
     });
     v.appendChild(grid);
   });
+  if (list.length > 10) { const none = el('p', 'empty', 'No name matches. Ask Joaquin to add you.'); none.id = 'pickNone'; none.hidden = true; v.appendChild(none); applyQ(); if (qFocus) { const q = $('pickQ'); q.focus(); try { q.setSelectionRange(qPos, qPos); } catch (e) {} } }
   if (picking) {
     const c = list.find(x => x.id === picking);
     if (!c) { picking = null; return renderPick(); }
@@ -602,29 +647,47 @@ function renderAnnouncement() {
 }
 function renderToday() {
   const v = $('v-today');
-  const p = livePuzzles()[0];
+  if (playing && !released().some(x => x.id === playing)) playing = null;
+  const p = playing ? released().find(x => x.id === playing) : livePuzzles()[0];
   if (!$('announceBox') || !v.contains($('announceBox'))) mountedKey = null;
   if (!p) {
     mountedKey = null;
     const ab = el('div', 'announce'); ab.id = 'announceBox';
-    v.replaceChildren(ab, el('h2', null, 'No puzzle live right now'), el('p', 'sub', 'The next one drops in the group chat. Check Rankings to see where you stand.'));
+    v.replaceChildren(ab, el('h2', null, 'No puzzle live right now'), el('p', 'sub', 'The next one drops in the group chat. Past puzzles are in History, and you can still play them.'));
     renderAnnouncement();
     return;
   }
-  const key = p.id + ':' + (S.me || 'watch');
+  // The clock starts when a player first opens the puzzle, so nothing is shown until they tap Start.
+  const started = !S.me || !!resultFor(p.id, S.me);
+  const key = p.id + ':' + (S.me || 'watch') + ':' + (started ? 'on' : 'gate') + (playing ? ':past' : '');
   if (mountedKey !== key) {
     mountedKey = key; v.replaceChildren();
     const ab = el('div', 'announce'); ab.id = 'announceBox'; v.appendChild(ab);
+    if (playing) { const back = el('button', 'btn small', '← Back to History'); back.type = 'button'; back.style.alignSelf = 'flex-start'; back.onclick = () => { playing = null; view = 'history'; route(); window.scrollTo(0, 0); }; v.appendChild(back); }
     const head = el('div', 'stack');
     const r = el('div', 'row wrap'); r.append(chipFor(p), el('span', 'legend', 'Dropped ' + fmtWhen(ms(p.released_at)))); head.appendChild(r);
     head.appendChild(el('h2', null, p.title)); v.appendChild(head);
-    if (livePuzzles().length > 1) v.appendChild(el('p', 'legend', `${livePuzzles().length - 1} more live in History`));
+    const others = livePuzzles().filter(x => x.id !== p.id).length;
+    if (!playing && others) v.appendChild(el('p', 'legend', `${others} more live ${others === 1 ? 'puzzle' : 'puzzles'} in History`));
     const card = el('div', 'card'); card.id = 'player'; v.appendChild(card);
     if (!S.me) card.appendChild(el('p', 'sub', 'Coach view: you can try the puzzle, but nothing is recorded.'));
-    const mount = { nonogram: mountNonogram, riddle: mountRiddle, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper, story: mountStory, logic: mountLogic, maze: mountMaze, connections: mountConnections, document: mountDocument }[p.type];
-    if (mount) mount(card, p); else card.appendChild(el('p', 'sub', 'This puzzle type needs an app update. Refresh the page, or tell Joaquin.'));
+    if (!started) {
+      const g = el('div', 'gate');
+      g.append(el('div', 'big', 'Ready?'), el('p', 'sub', 'Your clock starts when you tap Start and stops when you solve it. It keeps running if you close the app, so start when you have time.'));
+      const go = el('button', 'btn primary', 'Start puzzle'); go.type = 'button';
+      const gm = el('p', 'msg');
+      go.onclick = async () => {
+        go.disabled = true; gm.className = 'msg wait'; gm.textContent = 'Starting…';
+        try { await rpc('open_puzzle', { p_token: token, p_puzzle: p.id }); await refresh(); if (go.isConnected) { gm.className = 'msg bad'; gm.textContent = 'That didn’t start. Try again.'; } }
+        catch (e) { gm.className = 'msg bad'; gm.textContent = e.message; }
+        if (go.isConnected) go.disabled = false;
+      };
+      g.append(go, gm); card.appendChild(g);
+    } else {
+      const mount = { nonogram: mountNonogram, riddle: mountRiddle, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper, story: mountStory, logic: mountLogic, maze: mountMaze, connections: mountConnections, document: mountDocument }[p.type];
+      if (mount) mount(card, p); else card.appendChild(el('p', 'sub', 'This puzzle type needs an app update. Refresh the page, or tell Joaquin.'));
+    }
     const side = el('div', 'card'); side.id = 'todaySide'; v.appendChild(side);
-    if (S.me) rpc('open_puzzle', { p_token: token, p_puzzle: p.id }).then(refresh).catch(() => {});
   }
   renderAnnouncement();
   const side = $('todaySide');
@@ -636,10 +699,38 @@ function renderToday() {
 
 /* ---------- rankings ---------- */
 function renderRanks() {
-  const v = $('v-ranks'); v.replaceChildren(el('h2', null, 'Season rankings'));
-  v.appendChild(el('p', 'legend', `Fastest solve on each puzzle: 1st ${RANK_PTS[0]} · 2nd ${RANK_PTS[1]} · 3rd ${RANK_PTS[2]} · 4th ${RANK_PTS[3]} · any other solve ${FINISH_PTS}`));
-  const t = overall();
-  if (!t.length || !t[0].pts) { v.appendChild(el('p', 'empty', 'Rankings start once someone solves a puzzle.')); return; }
+  const v = $('v-ranks');
+  const meRole = S.me ? roleOf(S.me) : 'challenger';
+  if (!['challenger', 'all', 'guest'].includes(rankWho)) rankWho = meRole === 'guest' ? 'all' : 'challenger';
+  const types = [...new Set(released().map(p => p.type))].sort((a, b) => (TYPE_LABEL[a] || a).localeCompare(TYPE_LABEL[b] || b));
+  if (rankType && !types.includes(rankType)) rankType = null;
+  const keepScroll = (v.querySelector('.chips') || {}).scrollLeft || 0;
+  v.replaceChildren(el('h2', null, 'Season rankings'));
+
+  const f = el('div', 'filters');
+  const seg = el('div', 'seg'); seg.setAttribute('role', 'group'); seg.setAttribute('aria-label', 'Who to rank');
+  [['challenger', 'Challengers'], ['all', 'Everyone'], ['guest', 'Guests']].forEach(([k, label]) => {
+    const b = el('button', null, label); b.type = 'button'; b.setAttribute('aria-pressed', String(rankWho === k));
+    b.onclick = () => { rankWho = k; store.set('jdc-rank-who', k); renderRanks(); }; seg.appendChild(b);
+  });
+  f.appendChild(seg);
+  if (types.length > 1) {
+    const chips = el('div', 'chips'); chips.setAttribute('role', 'group'); chips.setAttribute('aria-label', 'Puzzle type');
+    [[null, 'All puzzles'], ...types.map(t => [t, TYPE_LABEL[t] || t])].forEach(([k, label]) => {
+      const b = el('button', null, label); b.type = 'button'; b.setAttribute('aria-pressed', String(rankType === k));
+      b.onclick = () => { rankType = k; renderRanks(); }; chips.appendChild(b);
+    });
+    f.appendChild(chips);
+  }
+  v.appendChild(f);
+  const chipsEl = v.querySelector('.chips'); if (chipsEl) chipsEl.scrollLeft = keepScroll;
+
+  const whoText = { challenger: 'Challengers only. Guests don’t take places.', all: 'Everyone, challengers and guests ranked together.', guest: 'Guests only, ranked against each other.' }[rankWho];
+  v.appendChild(el('p', 'legend', `${whoText} Fastest solve on each puzzle: 1st ${RANK_PTS[0]} · 2nd ${RANK_PTS[1]} · 3rd ${RANK_PTS[2]} · 4th ${RANK_PTS[3]} · any other solve ${FINISH_PTS}`));
+  const full = overall(rankWho, rankType);
+  // The challenger board always lists the whole team; the bigger boards list people once they have a solve.
+  const t = rankWho === 'challenger' ? full : full.filter(x => x.solved);
+  if (!t.length || !t[0].pts) { v.appendChild(el('p', 'empty', rankType ? `No ${(TYPE_LABEL[rankType] || rankType).toLowerCase()} solves here yet.` : 'Rankings start once someone solves a puzzle.')); return; }
   const pod = el('div', 'podium');
   [1, 0, 2].forEach(i => {
     const x = t[i], d = el('div', 'pod p' + (i + 1));
@@ -648,8 +739,9 @@ function renderRanks() {
   });
   v.appendChild(pod);
   const card = el('div', 'card'), ul = el('ul', 'list');
-  t.forEach((x, i) => ul.appendChild(personRow(i + 1, personOf(x.id), `${x.solved} solved · ${x.wins} ${x.wins === 1 ? 'win' : 'wins'} · ${x.podiums} podium`, String(x.pts), 'PTS')));
+  t.forEach((x, i) => ul.appendChild(personRow(i + 1, personOf(x.id), `${rankWho === 'all' && isGuest(x.id) ? 'guest · ' : ''}${x.solved} solved · ${x.wins} ${x.wins === 1 ? 'win' : 'wins'} · ${x.podiums} podium`, String(x.pts), 'PTS')));
   card.appendChild(ul); v.appendChild(card);
+  if (full.length > t.length) v.appendChild(el('p', 'legend', `${full.length - t.length} more ${full.length - t.length === 1 ? 'person hasn’t' : 'people haven’t'} solved one yet.`));
 }
 
 /* ---------- history ---------- */
@@ -660,17 +752,25 @@ function renderHistory() {
   v.replaceChildren(el('h2', null, 'Puzzle history'));
   const counts = {}; list.forEach(p => counts[p.type] = (counts[p.type] || 0) + 1);
   v.appendChild(el('p', 'legend', list.length ? `${list.length} puzzles · ` + Object.entries(counts).map(([k, n]) => `${n} ${(TYPE_LABEL[k] || k).toLowerCase()}${n > 1 ? 's' : ''}`).join(' · ') : 'Nothing released yet.'));
+  if (list.length) v.appendChild(el('p', 'sub', S.me ? 'Tap a puzzle to play it or see who solved it. Past puzzles still count.' : 'Tap a puzzle to see who solved it.'));
   const wrap = el('div', 'hist');
   list.forEach(p => {
     const s = standings(p.id), d = el('details'); d.dataset.id = p.id; if (open.has(p.id)) d.open = true;
     const sum = el('summary'); sum.appendChild(el('span', 't', p.title));
     const mine = S.me && resultFor(p.id, S.me);
     const me = mine && mine.solved_at ? s.solved.find(x => x.id === S.me) : null;
-    sum.appendChild(el('span', 'chip' + (me ? ' done' : ''), me ? (me.place ? ordinal(me.place) : 'solved') : mine ? 'unsolved' : '—'));
+    sum.appendChild(el('span', 'chip' + (me ? ' done' : ''), me ? (me.place ? ordinal(me.place) : 'solved') : mine ? 'in progress' : 'not played'));
     const m = el('span', 'm'); m.append(chipFor(p), el('span', null, fmtWhen(ms(p.released_at))), el('span', null, `${s.solved.length} solved`));
     if (s.solved[0]) m.appendChild(el('span', null, 'winner ' + nameOf(s.solved[0].id)));
     sum.appendChild(m); d.appendChild(sum);
-    const body = el('div', 'body'); body.appendChild(standingsList(p, p.status === 'live')); d.appendChild(body);
+    const body = el('div', 'body');
+    const pr = el('div', 'play'), go = el('button', 'btn small', !S.me ? 'Open puzzle' : !mine ? 'Play' : mine.solved_at ? 'View my solve' : 'Keep going'); go.type = 'button';
+    if (S.me && !(mine && mine.solved_at)) go.classList.add('primary');
+    go.onclick = () => { playing = p.id; view = 'today'; mountedKey = null; route(); window.scrollTo(0, 0); };
+    pr.appendChild(go);
+    if (S.me && !mine) pr.appendChild(el('span', 'legend', 'Your clock starts when you tap Start.'));
+    else if (mine && !mine.solved_at) pr.appendChild(el('span', 'legend', 'Your clock is running.'));
+    body.append(pr, standingsList(p, true)); d.appendChild(body);
     wrap.appendChild(d);
   });
   v.appendChild(wrap);
@@ -2742,7 +2842,7 @@ function route() {
   if ((view === 'coach' || view === 'practice') && !coachPass && !showLogin) view = 'today';
   const active = !S ? null : showLogin ? 'coach' : needPick ? 'pick' : view;
   ['pick', 'today', 'ranks', 'history', 'practice', 'coach'].forEach(k => $('v-' + k).hidden = k !== active);
-  $('tabs').querySelectorAll('button').forEach(b => b.setAttribute('aria-current', b.dataset.v === view ? 'page' : 'false'));
+  $('tabs').querySelectorAll('button').forEach(b => b.setAttribute('aria-current', b.dataset.v === (view === 'today' && playing ? 'history' : view) ? 'page' : 'false'));
   const me = S && S.me && people().find(c => c.id === S.me);
   $('meAv').hidden = !me; if (me) { $('meAv').textContent = me.name[0].toUpperCase(); $('meAv').style.background = colorFor(me.id); $('meAv').title = me.name; }
   renderMeCard();
@@ -2754,7 +2854,7 @@ function route() {
   if (active === 'coach') renderCoach();
   if (active === 'practice') renderPractice();
 }
-$('tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; view = b.dataset.v; route(); window.scrollTo(0, 0); if (view === 'coach' || view === 'practice') refresh(); });
+$('tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; view = b.dataset.v; playing = null; route(); window.scrollTo(0, 0); if (view === 'coach' || view === 'practice') refresh(); });
 window.addEventListener('hashchange', route);
 $('meAv').addEventListener('click', () => { meOpen = !meOpen; renderMeCard(); });
 
@@ -2763,11 +2863,14 @@ async function refresh() {
   if (inflight) return inflight;
   inflight = (async () => {
     try {
-      const st = await rpc('get_state', { p_token: token || null });
+      // Send the version we already have; the server answers "same" unless something changed.
+      let st;
+      try { st = await rpc('get_state', { p_token: token || null, p_known: (S && S.ver) || null }); }
+      catch (e) { if (!/find the function/i.test(e.message)) throw e; st = await rpc('get_state', { p_token: token || null }); }   // database not updated yet
       skew = ms(st.now) - Date.now();
       if (token && !st.me) { token = null; store.set('jdc-token', null); mountedKey = null; if (!watching()) setBanner('You were logged out on this phone. Tap your name and enter your PIN.'); }
       if (S && S.me !== st.me) mountedKey = null;
-      S = st;
+      if (!st.same || !S) S = st;
       if (coachPass && view === 'practice') {
         try { PR = await rpc('coach_practices', { p_pass: coachPass }); } catch (e) { setBanner(e.message, true); }
       }
