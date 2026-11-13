@@ -247,6 +247,26 @@ form.ans input:disabled { opacity: .5; }
 .mailbody b { font-weight: 700; }
 .dochints { margin: 0; padding-left: 22px; color: var(--muted); font-size: 14px; display: flex; flex-direction: column; gap: 4px; }
 .dochints li::marker { color: var(--signal); }
+.inboxprog { gap: 12px; align-items: center; }
+.inboxbar { flex: 1; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; max-width: 160px; }
+.inboxbar span { display: block; height: 100%; background: var(--signal); transition: width .3s; }
+.inbox { list-style: none; margin: 0; padding: 0; background: #fbfaf7; border-radius: 12px; overflow: hidden; }
+.inbox li + li { border-top: 1px solid #e3e1db; }
+.inboxrow { display: flex; gap: 10px; align-items: flex-start; width: 100%; text-align: left; background: none; border: 0; padding: 12px 12px 12px 8px; cursor: pointer; color: #1d2230; font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+.inboxrow:focus-visible { outline: 2px solid var(--signal); outline-offset: -2px; }
+.inboxdot { width: 8px; height: 8px; border-radius: 50%; background: #2f6fed; flex: none; margin-top: 15px; }
+.inboxrow.done .inboxdot { background: transparent; }
+.inboxrow.done .inboxtop b, .inboxrow.done .inboxsubj { font-weight: 400; }
+.inboxmid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.inboxtop { display: flex; justify-content: space-between; gap: 8px; } .inboxtop b { font-weight: 700; }
+.inboxsubj { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inboxsnip { color: #6b7080; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.inboxstatus { font-size: 12px; color: #6b7080; } .inboxstatus:empty { display: none; }
+.inboxstatus .ok { color: #157a4a; font-weight: 600; }
+.inboxview { display: flex; flex-direction: column; gap: 12px; }
+.inboxview > .btn.small { align-self: flex-start; }
+.inboxdone { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; border: 1px solid #2f8f5f; background: rgba(47,143,95,.12); border-radius: 10px; padding: 10px 12px; }
+.inboxdone b { color: #5fd4a0; } .inboxdone span { color: var(--ink); flex: 1; min-width: 0; overflow-wrap: anywhere; }
 /* connections */
 .cnsolved { display: flex; flex-direction: column; gap: 6px; }
 .cngroup { border-radius: 10px; padding: 10px 12px; text-align: center; color: #121620; display: flex; flex-direction: column; gap: 2px; animation: stIn .3s ease-out; }
@@ -2571,7 +2591,169 @@ function docInline(text) {   // **bold** is the only markup; everything else (in
   return frag;
 }
 const docNorm = s => String(s || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\b(a|an|the|my|your)\b/g, ' ').replace(/\s+/g, '').replace(/s$/, '');
+function docMail(m) {   // one email, rendered like the Document puzzle
+  const mail = el('article', 'mail');
+  const head = el('div', 'mailhead');
+  head.appendChild(el('div', 'mailav', (m.fromName || '?').trim().charAt(0)));
+  const hd = el('div', 'mailmeta');
+  const l1 = el('div', 'mailfrom'); l1.append(el('b', null, m.fromName || ''), el('span', 'mailtime', m.sent || ''));
+  hd.append(l1, el('div', 'mailto', 'to ' + (m.to || 'me')));
+  head.appendChild(hd);
+  mail.append(el('h3', 'mailsubj', m.subject || ''), head);
+  const body = el('div', 'mailbody');
+  (m.blocks || []).forEach(b => {
+    if (b.p != null) { const pe = el('p'); pe.appendChild(docInline(b.p)); body.appendChild(pe); }
+    else if (b.lines) { const d = el('div', 'maillines'); b.lines.forEach(t => { const ln = el('div'); ln.appendChild(docInline(t)); d.appendChild(ln); }); body.appendChild(d); }
+    else if (b.list) { if (b.title) { const tp = el('p'); tp.appendChild(docInline(b.title)); body.appendChild(tp); } const ul = el('ul'); b.list.forEach(t => { const li = el('li'); li.appendChild(docInline(t)); ul.appendChild(li); }); body.appendChild(ul); }
+    else if (b.sig) { const s = el('p', 'mailsig'); b.sig.split('\n').forEach((t, i) => { if (i) s.appendChild(el('br')); s.appendChild(docInline(t)); }); body.appendChild(s); }
+  });
+  mail.appendChild(body);
+  return mail;
+}
+
+// Inbox: several emails, one answer each. Done when every email is solved.
+function mountInbox(card, p, opts = {}) {
+  const cfg = p.config || {}, mails = cfg.mails || [], N = mails.length, PEN = cfg.hintPenalty || 120;
+  const mmss = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  let busy = false, lt = null, openIdx = null;
+  const pv = { s: [], a: {}, h: mails.map(() => 0), wrong: 0, lockUntil: 0, opened: Date.now(), solvedAt: 0 };
+  const myRes = () => opts.preview ? null : (S.me ? resultFor(p.id, S.me) : null);
+  const F = () => { if (opts.preview) return pv; const f = (mineFor(p.id) || {}).found; return f && !Array.isArray(f) ? f : { s: [], a: {}, h: [] }; };
+  const solved = i => (F().s || []).includes(i);
+  const nSolved = () => mails.filter((_, i) => solved(i)).length;
+  const isDone = () => opts.preview ? N > 0 && nSolved() === N : !!solvedState(p, opts);
+  const hintsUsed = i => +((F().h || [])[i] || 0);
+  const hintsAll = () => mails.reduce((t, _, i) => t + hintsUsed(i), 0);
+  const hintTotal = i => opts.preview ? ((cfg.previewHints || [])[i] || []).length : (cfg.hintCounts ? cfg.hintCounts[i] : 3);
+  const hintList = i => opts.preview ? ((cfg.previewHints || [])[i] || []).slice(0, pv.h[i]) : (((mineFor(p.id) || {}).hint_list || [])[i] || []);
+  const wrong = () => opts.preview ? pv.wrong : ((myRes() || {}).attempts || 0);
+  const lockLeft = () => opts.preview ? pv.lockUntil - Date.now() : (() => { const m = mineFor(p.id), u = m && ms(m.locked_until); return u ? u - serverNow() : 0; })();
+
+  if (cfg.brief) card.appendChild(el('p', 'sub', cfg.brief));
+  const prog = el('div', 'row between inboxprog'), progTxt = el('span', 'legend'), progBar = el('div', 'inboxbar'), progFill = el('span');
+  progBar.appendChild(progFill); prog.append(progTxt, progBar); card.appendChild(prog);
+
+  // the list
+  const list = el('ul', 'inbox');
+  const rows = mails.map((m, i) => {
+    const li = el('li'), b = el('button', 'inboxrow'); b.type = 'button';
+    const dot = el('span', 'inboxdot'); dot.setAttribute('aria-hidden', 'true');
+    const av = el('div', 'mailav', (m.fromName || '?').trim().charAt(0));
+    const mid = el('div', 'inboxmid');
+    const top = el('div', 'inboxtop'); top.append(el('b', null, m.fromName || ''), el('span', 'mailtime', m.sent || ''));
+    const first = (m.blocks || []).find(x => x.p != null);
+    const snip = el('div', 'inboxsnip', first ? first.p.replace(/\*\*/g, '') : '');
+    const status = el('div', 'inboxstatus');
+    mid.append(top, el('div', 'inboxsubj', m.subject || ''), snip, status);
+    b.append(dot, av, mid);
+    b.onclick = () => openMail(i);
+    li.appendChild(b); list.appendChild(li);
+    return { b, status };
+  });
+  card.appendChild(list);
+
+  // one view per email, built once so typing survives refreshes
+  const views = mails.map((m, i) => {
+    const v = el('div', 'inboxview'); v.hidden = true;
+    const back = el('button', 'btn small', '← Inbox'); back.type = 'button'; back.onclick = () => openMail(null);
+    const form = el('form', 'ans'); form.autocomplete = 'off';
+    const inp = el('input'); inp.type = 'text'; inp.id = `inbox-${p.id}-${i}`; inp.placeholder = m.placeholder || 'Your answer'; inp.setAttribute('aria-label', 'Answer for: ' + (m.subject || 'this email'));
+    inp.setAttribute('autocapitalize', 'off'); inp.setAttribute('autocorrect', 'off'); inp.spellcheck = false;
+    const go = el('button', 'btn primary', 'Submit'); go.type = 'submit'; form.append(inp, go);
+    const msgEl = el('p', 'msg'); msgEl.setAttribute('aria-live', 'polite');
+    const meta = el('div', 'meta'), cnt = el('span'), hb = el('button', 'hintbtn'); hb.type = 'button'; meta.append(cnt, hb);
+    const hintsEl = el('ol', 'dochints');
+    const done = el('div', 'inboxdone'); done.hidden = true;
+    const next = el('button', 'btn small', 'Back to inbox'); next.type = 'button'; next.onclick = () => openMail(null);
+    v.append(back, docMail(m), form, msgEl, done, meta, hintsEl);
+    const o = { v, form, inp, go, msgEl, cnt, hb, hintsEl, done, next, msg: '', kind: '' };
+    form.addEventListener('submit', e => { e.preventDefault(); submit(i); });
+    hb.onclick = () => hint(i);
+    card.appendChild(v);
+    return o;
+  });
+  const w = winCard(cfg.winTitle || 'Inbox zero');
+  card.appendChild(w.win);
+
+  function openMail(i) {
+    openIdx = i; draw();
+    const top = card.getBoundingClientRect().top + window.scrollY - 70;
+    if (window.scrollY > top) window.scrollTo({ top, behavior: 'instant' in document.documentElement.style ? 'instant' : 'auto' });
+  }
+  function shake(o) { o.inp.classList.remove('shake'); void o.inp.offsetWidth; o.inp.classList.add('shake'); o.inp.select(); }
+  async function submit(i) {
+    const o = views[i], raw = o.inp.value.trim();
+    if (!raw || busy || solved(i) || isDone() || lockLeft() > 0) return;
+    if (opts.preview) {
+      const ok = ((cfg.previewAnswers || [])[i] || []).map(docNorm).includes(docNorm(raw));
+      if (ok) { pv.s.push(i); pv.a[i] = raw; o.msg = ''; if (nSolved() === N) pv.solvedAt = Date.now(); }
+      else { pv.wrong++; if (pv.wrong % (cfg.lockEvery || 3) === 0) pv.lockUntil = Date.now() + (cfg.lockSeconds || 30) * 1000; o.msg = 'Not it.'; o.kind = 'bad'; shake(o); }
+      return draw();
+    }
+    if (!S.me) return;
+    busy = true; draw();
+    try {
+      const res = await rpc('inbox_submit', { p_token: token, p_puzzle: p.id, p_part: i, p_guess: raw });
+      if (res.correct) o.msg = '';
+      else if (res.empty) { o.msg = 'Type an actual answer.'; o.kind = 'bad'; }
+      else { o.msg = 'Not it.'; o.kind = 'bad'; shake(o); }
+    } catch (err) { o.msg = err.message; o.kind = 'bad'; }
+    busy = false; await refresh(); draw();
+  }
+  async function hint(i) {
+    const o = views[i];
+    if (busy || solved(i) || isDone() || hintsUsed(i) >= hintTotal(i)) return;
+    if (!o.hb.dataset.armed) { o.hb.dataset.armed = '1'; o.hb.textContent = `Sure? Adds ${mmss(PEN)} to your time`; setTimeout(() => { delete o.hb.dataset.armed; draw(); }, 4000); return; }
+    delete o.hb.dataset.armed;
+    if (opts.preview) { pv.h[i]++; return draw(); }
+    busy = true; draw();
+    try { await rpc('inbox_hint', { p_token: token, p_puzzle: p.id, p_part: i }); } catch (e) { o.msg = e.message; o.kind = 'bad'; }
+    busy = false; await refresh(); draw();
+  }
+  function draw() {
+    if (!card.isConnected && card._mounted) return;
+    card._mounted = true;
+    const allDone = isDone(), k = nSolved(), left = lockLeft();
+    progTxt.textContent = allDone ? `All ${N} solved` : `${k} of ${N} solved`;
+    progFill.style.width = (N ? 100 * k / N : 0) + '%';
+    list.hidden = openIdx !== null;
+    prog.hidden = openIdx !== null;
+    rows.forEach((r, i) => {
+      const s = solved(i), h = hintsUsed(i);
+      r.b.classList.toggle('done', s);
+      r.status.replaceChildren();
+      if (s) { r.status.append(el('span', 'ok', (F().a || {})[i] ? '✓ ' + (F().a || {})[i] : '✓ Solved')); }
+      else if (h) r.status.appendChild(el('span', null, `${h} ${h === 1 ? 'hint' : 'hints'} used`));
+      r.b.setAttribute('aria-label', `${mails[i].fromName}: ${mails[i].subject}. ${s ? 'Solved' : 'Not solved'}`);
+    });
+    views.forEach((o, i) => {
+      o.v.hidden = openIdx !== i;
+      const s = solved(i), used = hintsUsed(i), tot = hintTotal(i);
+      o.form.hidden = s || allDone;
+      o.inp.disabled = o.go.disabled = busy || left > 0 || (!opts.preview && !S.me);
+      o.done.hidden = !s;
+      if (s) { o.done.replaceChildren(el('b', null, 'Solved'), el('span', null, (F().a || {})[i] ? `Your answer: ${(F().a || {})[i]}` : ''), o.next); }
+      o.cnt.replaceChildren('Wrong guesses ', el('b', null, String(wrong())));
+      o.hb.hidden = !tot || (s && !used);
+      o.hb.disabled = busy || s || allDone || used >= tot;
+      if (!o.hb.dataset.armed) o.hb.textContent = used >= tot ? `All ${tot} hints used` : s ? `${used} ${used === 1 ? 'hint' : 'hints'} used` : `Hint ${used + 1} of ${tot} (+${mmss(PEN)})`;
+      const hl = hintList(i); o.hintsEl.replaceChildren(...hl.map(h => el('li', null, h))); o.hintsEl.hidden = !hl.length;
+      if (left > 0 && !s) { o.msgEl.className = 'msg wait'; o.msgEl.textContent = `Too many guesses. Try again in ${Math.ceil(left / 1000)}s.`; }
+      else { o.msgEl.className = 'msg' + (o.kind ? ' ' + o.kind : ''); o.msgEl.textContent = s ? '' : o.msg; }
+    });
+    clearTimeout(lt); if (left > 0) lt = setTimeout(draw, 300);
+    w.win.hidden = !allDone || openIdx !== null;
+    if (allDone) {
+      const hs = hintsAll();
+      if (opts.preview) { const t = Math.round((pv.solvedAt - pv.opened) / 1000) + hs * PEN; w.txt.textContent = `Preview: solved in ${mmss(t)} with ${hs} ${hs === 1 ? 'hint' : 'hints'}. Nothing was recorded.`; }
+      else { fillWin(w, p, opts); const r = myRes(); if (r) w.stamp.textContent = `${r.attempts} wrong · ${hs} ${hs === 1 ? 'hint' : 'hints'}${hs ? ` (+${mmss(hs * PEN)})` : ''} · ` + w.stamp.textContent; }
+    }
+  }
+  card._sync = draw; draw();
+}
+
 function mountDocument(card, p, opts = {}) {
+  if ((p.config || {}).layout === 'inbox') return mountInbox(card, p, opts);
   const cfg = p.config || {}, NH = cfg.hintCount || (cfg.previewHints || []).length || 0, PEN = cfg.hintPenalty || 120;
   let busy = false, msg = '', msgKind = '', lt = null, pv = { hints: 0, wrong: 0, solved: false, lockUntil: 0, opened: Date.now(), solvedAt: 0 };
   const isDone = () => opts.preview ? pv.solved : !!solvedState(p, opts);
