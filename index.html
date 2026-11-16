@@ -267,6 +267,28 @@ form.ans input:disabled { opacity: .5; }
 .inboxview > .btn.small { align-self: flex-start; }
 .inboxdone { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; border: 1px solid #2f8f5f; background: rgba(47,143,95,.12); border-radius: 10px; padding: 10px 12px; }
 .inboxdone b { color: #5fd4a0; } .inboxdone span { color: var(--ink); flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.sheet { display: flex; flex-direction: column; gap: 8px; }
+.sheetbar { display: flex; align-items: center; gap: 8px; } .sheetbar .legend { flex: 1; }
+.sheetpanel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.sheetpanel select { font: 14px var(--body); padding: 8px; border-radius: 8px; background: var(--bg); color: var(--ink); border: 1px solid var(--line); }
+.sheetvals { display: flex; flex-wrap: wrap; gap: 6px; }
+.sheetval, .sheetchip { font: 12px var(--body); padding: 6px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg); color: var(--muted); cursor: pointer; }
+.sheetval[aria-pressed="true"] { color: var(--signal); border-color: var(--signal); background: var(--signal-dim); }
+.sheetval[aria-pressed="false"] { text-decoration: line-through; opacity: .6; }
+.sheetchips { display: flex; flex-wrap: wrap; gap: 6px; } .sheetchips:empty { display: none; }
+.sheetchip { color: var(--signal); border-color: var(--signal); }
+.sheetbox { overflow-x: auto; border-radius: 10px; background: #fbfaf7; -webkit-overflow-scrolling: touch; }
+.sheetbox table { border-collapse: collapse; width: 100%; font: 12.5px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #1d2230; font-variant-numeric: tabular-nums; }
+.sheetbox th { position: sticky; top: 0; background: #e9e6df; text-align: left; padding: 0; vertical-align: bottom; }
+.sheetbox th button { all: unset; display: block; padding: 8px 5px; cursor: pointer; font-weight: 700; }
+.sheetbox th button:focus-visible { outline: 2px solid var(--signal); outline-offset: -2px; }
+.sheetbox th.on { background: #ffe2c4; }
+.sheetbox td { padding: 7px 5px; border-top: 1px solid #e3e1db; white-space: nowrap; vertical-align: top; }
+.sheetbox td.wrap { white-space: normal; min-width: 58px; }
+.sheetbox td.num { text-align: right; } .sheetbox .n { color: #9a9fab; width: 1%; text-align: right; padding-right: 4px; }
+.sheetbox th.n { padding: 8px 4px 8px 8px; }
+.sheetbox td.empty { white-space: normal; color: #6b7080; text-align: center; padding: 16px; }
+.guestlink a { color: var(--signal); }
 /* connections */
 .cnsolved { display: flex; flex-direction: column; gap: 6px; }
 .cngroup { border-radius: 10px; padding: 10px 12px; text-align: center; color: #121620; display: flex; flex-direction: column; gap: 2px; animation: stIn .3s ease-out; }
@@ -2752,6 +2774,104 @@ function mountInbox(card, p, opts = {}) {
   card._sync = draw; draw();
 }
 
+// Sortable, filterable table for "sheet" Document puzzles. Sort and filters are remembered per puzzle on this phone.
+function docSheet(p, sh) {
+  const cols = sh.cols || [], rows = (sh.rows || []).map((r, i) => ({ r, i }));
+  const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const show = (c, v) => c.type === 'date' && /^\d{4}-\d\d-\d\d$/.test(v) ? `${MON[+v.slice(5, 7) - 1]} ${+v.slice(8)}` : String(v);
+  const key = 'jdc-sheet-' + p.id;
+  let st = store.get(key); try { st = st ? JSON.parse(st) : null; } catch (e) { st = null; }
+  if (!st || typeof st !== 'object') st = {};
+  st.sort = st.sort && cols[st.sort.c] ? st.sort : null;
+  st.f = st.f && typeof st.f === 'object' ? st.f : {};
+  let fcol = 0;
+  const save = () => store.set(key, JSON.stringify({ sort: st.sort, f: st.f }));
+  const distinct = c => [...new Set(rows.map(x => show(cols[c], x.r[c])))].sort((a, b) => cols[c].type === 'num' ? a - b : a.localeCompare(b));
+
+  const wrap = el('div', 'sheet');
+  const bar = el('div', 'sheetbar');
+  const info = el('span', 'legend');
+  const reset = el('button', 'btn small', 'Reset'); reset.type = 'button';
+  const fbtn = el('button', 'btn small', 'Filter'); fbtn.type = 'button'; fbtn.setAttribute('aria-expanded', 'false');
+  bar.append(info, fbtn, reset);
+  const panel = el('div', 'sheetpanel'); panel.hidden = true;
+  const sel = el('select'); sel.id = 'sheet-col-' + p.id; sel.setAttribute('aria-label', 'Column to filter');
+  cols.forEach((c, i) => { const o = el('option', null, c.label); o.value = i; sel.appendChild(o); });
+  const vals = el('div', 'sheetvals'), pall = el('div', 'row wrap');
+  const allB = el('button', 'btn small', 'All'), noneB = el('button', 'btn small', 'None'); allB.type = noneB.type = 'button';
+  pall.append(allB, noneB);
+  panel.append(sel, pall, vals);
+  const chips = el('div', 'sheetchips');
+  const box = el('div', 'sheetbox'), tbl = el('table'), thead = el('thead'), tbody = el('tbody');
+  tbl.append(thead, tbody); box.appendChild(tbl);
+  wrap.append(bar, panel, chips, box);
+
+  const hr = el('tr'); hr.appendChild(el('th', 'n', '#'));
+  const ths = cols.map((c, i) => {
+    const th = el('th'), b = el('button', null); b.type = 'button';
+    b.onclick = () => { const s = st.sort; st.sort = !s || s.c !== i ? { c: i, d: 1 } : s.d === 1 ? { c: i, d: -1 } : null; save(); draw(); };
+    th.appendChild(b); hr.appendChild(th); return { th, b, c };
+  });
+  thead.appendChild(hr);
+
+  fbtn.onclick = () => { panel.hidden = !panel.hidden; fbtn.setAttribute('aria-expanded', String(!panel.hidden)); drawPanel(); };
+  sel.onchange = () => { fcol = +sel.value; drawPanel(); };
+  allB.onclick = () => { delete st.f[fcol]; save(); draw(); };
+  noneB.onclick = () => { st.f[fcol] = []; save(); draw(); };
+  reset.onclick = () => { st.sort = null; st.f = {}; save(); draw(); };
+
+  function drawPanel() {
+    sel.value = String(fcol);
+    const on = st.f[fcol];
+    vals.replaceChildren(...distinct(fcol).map(v => {
+      const b = el('button', 'sheetval', v); b.type = 'button';
+      b.setAttribute('aria-pressed', String(!on || on.includes(v)));
+      b.onclick = () => {
+        let cur = st.f[fcol] ? [...st.f[fcol]] : distinct(fcol);
+        cur = cur.includes(v) ? cur.filter(x => x !== v) : [...cur, v];
+        if (cur.length === distinct(fcol).length) delete st.f[fcol]; else st.f[fcol] = cur;
+        save(); draw();
+      };
+      return b;
+    }));
+  }
+  function view() {
+    let v = rows.filter(x => Object.entries(st.f).every(([c, keep]) => keep.includes(show(cols[c], x.r[c]))));
+    if (st.sort) {
+      const { c, d } = st.sort, num = cols[c].type === 'num';
+      v = [...v].sort((a, b) => { const A = a.r[c], B = b.r[c]; const k = num ? A - B : String(A).localeCompare(String(B)); return (k || a.i - b.i) * d; });
+    }
+    return v;
+  }
+  function draw() {
+    const v = view();
+    info.textContent = `Showing ${v.length} of ${rows.length}`;
+    reset.disabled = !st.sort && !Object.keys(st.f).length;
+    ths.forEach(({ th, b, c }, i) => {
+      const s = st.sort && st.sort.c === i ? st.sort.d : 0;
+      b.textContent = c.label + (s === 1 ? ' ▲' : s === -1 ? ' ▼' : '');
+      th.setAttribute('aria-sort', s === 1 ? 'ascending' : s === -1 ? 'descending' : 'none');
+      th.classList.toggle('on', !!s);
+      b.setAttribute('aria-label', `Sort by ${c.label}`);
+    });
+    chips.replaceChildren(...Object.entries(st.f).map(([c, keep]) => {
+      const b = el('button', 'sheetchip', `${cols[c].label}: ${keep.length} of ${distinct(+c).length} ×`); b.type = 'button';
+      b.setAttribute('aria-label', `Clear the ${cols[c].label} filter`);
+      b.onclick = () => { delete st.f[c]; save(); draw(); };
+      return b;
+    }));
+    tbody.replaceChildren(...v.map((x, n) => {
+      const tr = el('tr'); tr.appendChild(el('td', 'n', String(n + 1)));
+      cols.forEach((c, i) => tr.appendChild(el('td', c.type === 'num' ? 'num' : c.type ? null : 'wrap', show(c, x.r[i]))));
+      return tr;
+    }));
+    if (!v.length) { const tr = el('tr'); const td = el('td', 'empty', 'Every row is filtered out. Tap Reset.'); td.colSpan = cols.length + 1; tr.appendChild(td); tbody.appendChild(tr); }
+    if (!panel.hidden) drawPanel();
+  }
+  draw();
+  return wrap;
+}
+
 function mountDocument(card, p, opts = {}) {
   if ((p.config || {}).layout === 'inbox') return mountInbox(card, p, opts);
   const cfg = p.config || {}, NH = cfg.hintCount || (cfg.previewHints || []).length || 0, PEN = cfg.hintPenalty || 120;
@@ -2782,6 +2902,13 @@ function mountDocument(card, p, opts = {}) {
   });
   mail.appendChild(body);
   card.appendChild(mail);
+  if (cfg.sheet) card.appendChild(docSheet(p, cfg.sheet));
+  // Reference link for guests and the coach; challengers are expected to know it by heart.
+  if (cfg.guestLink && (opts.preview || !S.me || roleOf(S.me) !== 'challenger')) {
+    const gl = el('p', 'legend guestlink'); const a = el('a', null, cfg.guestLink.label || cfg.guestLink.url);
+    a.href = cfg.guestLink.url; a.target = '_blank'; a.rel = 'noopener';
+    gl.append(cfg.guestLink.before || 'Not a challenger? ', a); card.appendChild(gl);
+  }
 
   // answer box, hints, result
   const form = el('form', 'ans'); form.autocomplete = 'off';
