@@ -289,6 +289,26 @@ form.ans input:disabled { opacity: .5; }
 .sheetbox th.n { padding: 8px 4px 8px 8px; }
 .sheetbox td.empty { white-space: normal; color: #6b7080; text-align: center; padding: 16px; }
 .guestlink a { color: var(--signal); }
+.sltabs { display: grid; grid-template-columns: 1fr 1fr; }
+.sltabs button:disabled { opacity: .45; cursor: not-allowed; }
+.slrules { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.slrules summary { cursor: pointer; font-weight: 600; color: var(--signal); }
+.slrules ul { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.slwrap { background: #fbfaf7; border-radius: 12px; padding: 4px; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+.slboard { display: block; width: 100%; height: auto; max-height: 78vh; }
+.slguide { stroke: transparent; stroke-width: .5; }
+.slline { stroke: #1d2230; stroke-width: .11; stroke-linecap: round; opacity: 0; }
+.slboard g.on .slline { opacity: 1; }
+.slboard g.won .slline { stroke: #157a4a; }
+.slx { stroke: #d2453b; stroke-width: .045; stroke-linecap: round; opacity: 0; }
+.slboard g.x .slx { opacity: .8; }
+.sldot { fill: #6b7080; }
+.slclue { font: 600 .55px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; fill: #1d2230; text-anchor: middle; dominant-baseline: middle; }
+.slclue.met { fill: #9aa0ab; }
+.slclue.over { fill: #d2453b; }
+.sltools { gap: 8px; }
+.slnext { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; border: 1px solid var(--signal); background: var(--signal-dim); border-radius: 10px; padding: 12px; }
+.slnext p { margin: 0; }
 /* connections */
 .cnsolved { display: flex; flex-direction: column; gap: 6px; }
 .cngroup { border-radius: 10px; padding: 10px 12px; text-align: center; color: #121620; display: flex; flex-direction: column; gap: 2px; animation: stIn .3s ease-out; }
@@ -456,7 +476,7 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const RANK_PTS = [5, 3, 2, 1];   // 1st..4th on each puzzle
 const FINISH_PTS = 1;            // any later solve
 const POLL_MS = 12000;
-const TYPE_LABEL = { nonogram: 'Nonogram', riddle: 'Riddle', sudoku: 'Sudoku', wordsearch: 'Word search', findit: 'Find it', spotdiff: 'Spot the difference', minesweeper: 'Minesweeper', story: 'Story', logic: 'Logic grid', maze: 'Maze', connections: 'Connections', document: 'Document' };
+const TYPE_LABEL = { nonogram: 'Nonogram', riddle: 'Riddle', sudoku: 'Sudoku', wordsearch: 'Word search', findit: 'Find it', spotdiff: 'Spot the difference', minesweeper: 'Minesweeper', story: 'Story', logic: 'Logic grid', maze: 'Maze', connections: 'Connections', document: 'Document', slitherlink: 'Slitherlink' };
 const TRIES_TYPES = new Set(['riddle', 'findit', 'spotdiff', 'minesweeper', 'story', 'logic', 'document']);
 const FAIL_WORDS = { minesweeper: ['boom', 'booms'], story: ['fail', 'fails'], maze: ['death', 'deaths'], connections: ['mistake', 'mistakes'] };   // types where attempts are failures, not guesses   // puzzle types where wrong attempts count
 const AV_COLORS = ['#ff9d3c', '#5fd4a0', '#7fb2ff', '#f5c84c', '#ff7eb6', '#b59cff', '#5fd0e0', '#d9925b'];
@@ -726,7 +746,7 @@ function renderToday() {
       };
       g.append(go, gm); card.appendChild(g);
     } else {
-      const mount = { nonogram: mountNonogram, riddle: mountRiddle, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper, story: mountStory, logic: mountLogic, maze: mountMaze, connections: mountConnections, document: mountDocument }[p.type];
+      const mount = { nonogram: mountNonogram, riddle: mountRiddle, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper, story: mountStory, logic: mountLogic, maze: mountMaze, connections: mountConnections, document: mountDocument, slitherlink: mountSlitherlink }[p.type];
       if (mount) mount(card, p); else card.appendChild(el('p', 'sub', 'This puzzle type needs an app update. Refresh the page, or tell Joaquin.'));
     }
     const side = el('div', 'card'); side.id = 'todaySide'; v.appendChild(side);
@@ -1314,6 +1334,159 @@ function mountSudoku(card, p, opts = {}) {
     sending = true; lastSent = grid; await submitGrid(p, { grid }, status); sending = false; draw();
   }
   card._sync = draw; draw(); check();
+}
+
+/* ---------- slitherlink ---------- */
+// Board geometry shared by the player and the checker. Edges: horizontal (R+1)*C first, then vertical R*(C+1).
+function slGeom(R, C) {
+  const NH = (R + 1) * C, NE = NH + R * (C + 1);
+  const h = (r, c) => r * C + c, v = (r, c) => NH + r * (C + 1) + c, V = (r, c) => r * (C + 1) + c;
+  const cellEdges = [], ends = Array(NE), vertEdges = Array((R + 1) * (C + 1)).fill(0).map(() => []);
+  for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) cellEdges.push([h(r, c), h(r + 1, c), v(r, c), v(r, c + 1)]);
+  for (let r = 0; r <= R; r++) for (let c = 0; c < C; c++) ends[h(r, c)] = [V(r, c), V(r, c + 1)];
+  for (let r = 0; r < R; r++) for (let c = 0; c <= C; c++) ends[v(r, c)] = [V(r, c), V(r + 1, c)];
+  ends.forEach(([a, b], e) => { vertEdges[a].push(e); vertEdges[b].push(e); });
+  return { R, C, NH, NE, h, v, cellEdges, ends, vertEdges };
+}
+// 'solved' when every clue is met and the lines make exactly one closed loop.
+function slCheck(g, clues, st) {
+  for (let i = 0; i < clues.length; i++) if (clues[i] >= 0 && g.cellEdges[i].filter(e => st[e] === 1).length !== clues[i]) return false;
+  const on = []; for (let e = 0; e < g.NE; e++) if (st[e] === 1) on.push(e);
+  if (!on.length) return false;
+  const adj = new Map();
+  for (const e of on) { const [a, b] = g.ends[e]; (adj.get(a) || adj.set(a, []).get(a)).push(b); (adj.get(b) || adj.set(b, []).get(b)).push(a); }
+  for (const [, n] of adj) if (n.length !== 2) return false;
+  const start = g.ends[on[0]][0], seen = new Set([start]), stack = [start];
+  while (stack.length) { const x = stack.pop(); for (const y of adj.get(x)) if (!seen.has(y)) { seen.add(y); stack.push(y); } }
+  return seen.size === adj.size;
+}
+function slRules(open) {
+  const d = el('details', 'slrules'); d.open = !!open;
+  d.appendChild(el('summary', null, 'How to play'));
+  const ul = el('ul');
+  ['Draw one single loop along the dotted lines. No branches, no crossings, no loose ends.',
+   'A number says how many sides of its square are part of the loop. Empty squares can have any number.',
+   'Tap a gap once for a line, twice for an × (“no line here”), three times to clear it.',
+   'Start with the 0s and 3s. Every dot has either 0 or 2 lines touching it.'].forEach(t => ul.appendChild(el('li', null, t)));
+  d.appendChild(ul);
+  return d;
+}
+function mountSlitherlink(card, p, opts = {}) {
+  const cfg = p.config || {};
+  const rounds = [cfg.tutorial, cfg.main || cfg].filter(x => x && x.clues);
+  const LK = (opts.preview ? 'jdc-sl-preview-' : 'jdc-sl-') + p.id;
+  let saved = {}; if (!opts.preview) { try { saved = JSON.parse(store.get(LK) || '{}') || {}; } catch (e) { saved = {}; } }
+  const states = rounds.map((rd, i) => { const g = slGeom(rd.rows, rd.cols); const s = saved.s && saved.s[i]; return Array.isArray(s) && s.length === g.NE ? s.map(x => (x === 1 || x === 2) ? x : 0) : Array(g.NE).fill(0); });
+  const tutDone = () => rounds.length > 1 && (saved.t || slCheck(slGeom(rounds[0].rows, rounds[0].cols), rounds[0].clues, states[0]));
+  let round = rounds.length > 1 && !tutDone() ? 0 : rounds.length - 1;
+  if (typeof saved.r === 'number' && saved.r < rounds.length && (saved.r === 0 || tutDone())) round = saved.r;
+  let undo = rounds.map(() => []), previewDone = false, sending = false, lastSent = '';
+  const save = () => { if (!opts.preview) store.set(LK, JSON.stringify({ s: states, r: round, t: !!saved.t })); };
+  const isDone = () => opts.preview ? previewDone : !!solvedState(p, opts);
+
+  if (cfg.brief) card.appendChild(el('p', 'sub', cfg.brief));
+  const tabs = el('div', 'seg sltabs'); tabs.setAttribute('role', 'group'); tabs.setAttribute('aria-label', 'Round');
+  const tabBtns = rounds.map((rd, i) => { const b = el('button', null, rounds.length > 1 ? (i === 0 ? 'Round 1 · Tutorial' : 'Round 2') : 'Puzzle'); b.type = 'button'; b.onclick = () => go(i); tabs.appendChild(b); return b; });
+  if (rounds.length > 1) card.appendChild(tabs);
+  const intro = el('p', 'sub slintro'); card.appendChild(intro);
+  const rules = slRules(round === 0 && rounds.length > 1); card.appendChild(rules);
+  const status = el('div', 'meta'); card.appendChild(status);
+  const wrap = el('div', 'slwrap'); card.appendChild(wrap);
+  const tools = el('div', 'row sltools');
+  const und = el('button', 'btn small', 'Undo'); und.type = 'button';
+  const clr = el('button', 'btn small', 'Clear'); clr.type = 'button';
+  tools.append(und, clr); card.appendChild(tools);
+  const next = el('div', 'slnext'); next.hidden = true; card.appendChild(next);
+  const w = winCard('Loop closed'); card.appendChild(w.win);
+  const NS = 'http://www.w3.org/2000/svg', svgEl = (t, a) => { const x = document.createElementNS(NS, t); for (const k in a) x.setAttribute(k, a[k]); return x; };
+
+  let g, clues, st, svg, edgeEls, clueEls, armed = false;
+  function build() {
+    const rd = rounds[round]; g = slGeom(rd.rows, rd.cols); clues = rd.clues.split('').map(ch => ch === '.' ? -1 : +ch); st = states[round];
+    const P = 0.3, Wd = g.C + 2 * P, Ht = g.R + 2 * P;
+    svg = svgEl('svg', { viewBox: `${-P} ${-P} ${Wd} ${Ht}`, class: 'slboard', role: 'img', 'aria-label': `Slitherlink board, ${g.R} by ${g.C}` });
+    edgeEls = [];
+    for (let e = 0; e < g.NE; e++) {
+      const horiz = e < g.NH, r = horiz ? Math.floor(e / g.C) : Math.floor((e - g.NH) / (g.C + 1)), c = horiz ? e % g.C : (e - g.NH) % (g.C + 1);
+      const x1 = c, y1 = r, x2 = horiz ? c + 1 : c, y2 = horiz ? r : r + 1;
+      const grp = svgEl('g', {});
+      grp.appendChild(svgEl('line', { x1, y1, x2, y2, class: 'slguide' }));
+      grp.appendChild(svgEl('line', { x1, y1, x2, y2, class: 'slline' }));
+      const mx = (x1 + x2) / 2, my = (y1 + y2) / 2, k = 0.12;
+      const xm = svgEl('path', { d: `M${mx - k} ${my - k}L${mx + k} ${my + k}M${mx + k} ${my - k}L${mx - k} ${my + k}`, class: 'slx' });
+      grp.appendChild(xm); svg.appendChild(grp); edgeEls.push(grp);
+    }
+    clueEls = clues.map((k, i) => {
+      if (k < 0) return null;
+      const t = svgEl('text', { x: (i % g.C) + 0.5, y: Math.floor(i / g.C) + 0.53, class: 'slclue' }); t.textContent = String(k); svg.appendChild(t); return t;
+    });
+    for (let r = 0; r <= g.R; r++) for (let c = 0; c <= g.C; c++) svg.appendChild(svgEl('circle', { cx: c, cy: r, r: 0.07, class: 'sldot' }));
+    svg.addEventListener('pointerdown', onTap);
+    wrap.replaceChildren(svg);
+  }
+  function onTap(ev) {
+    if (doneHere()) return;
+    const pt = svg.createSVGPoint(); pt.x = ev.clientX; pt.y = ev.clientY;
+    const q = pt.matrixTransform(svg.getScreenCTM().inverse());
+    // nearest edge midpoint, within half a square
+    let best = -1, bd = 0.45;
+    const rr = Math.round(q.y), cc = Math.round(q.x), fr = Math.floor(q.y), fc = Math.floor(q.x);
+    const cand = [];
+    for (const r of [rr - 1, rr, rr + 1]) for (const c of [fc - 1, fc, fc + 1]) if (r >= 0 && r <= g.R && c >= 0 && c < g.C) cand.push([g.h(r, c), c + 0.5, r]);
+    for (const r of [fr - 1, fr, fr + 1]) for (const c of [cc - 1, cc, cc + 1]) if (r >= 0 && r < g.R && c >= 0 && c <= g.C) cand.push([g.v(r, c), c, r + 0.5]);
+    for (const [e, x, y] of cand) { const d = Math.hypot(q.x - x, q.y - y); if (d < bd) { bd = d; best = e; } }
+    if (best < 0) return;
+    ev.preventDefault();
+    undo[round].push([best, st[best]]);
+    st[best] = (st[best] + 1) % 3;
+    save(); draw(); check();
+  }
+  function doneHere() { return round === rounds.length - 1 ? isDone() : !!saved.t; }
+  und.onclick = () => { const u = undo[round].pop(); if (!u || doneHere()) return; st[u[0]] = u[1]; save(); draw(); };
+  clr.onclick = () => {
+    if (doneHere() || !st.some(x => x)) return;
+    if (!armed) { armed = true; clr.textContent = 'Sure? Clear all'; setTimeout(() => { armed = false; draw(); }, 3000); return; }
+    armed = false; undo[round].push(...st.map((x, e) => [e, x]).filter(([, x]) => x)); st.fill(0); save(); draw();
+  };
+  function go(i) {
+    if (i === round || (i > 0 && rounds.length > 1 && !saved.t && !isDone())) return;
+    round = i; save(); build(); rules.open = round === 0 && rounds.length > 1; draw();
+  }
+  function draw() {
+    const done = doneHere(), on = st.map(x => x === 1);
+    edgeEls.forEach((grp, e) => { grp.classList.toggle('on', st[e] === 1); grp.classList.toggle('x', st[e] === 2); grp.classList.toggle('won', done && st[e] === 1); });
+    clueEls.forEach((t, i) => {
+      if (!t) return;
+      const es = g.cellEdges[i], n = es.filter(e => on[e]).length, open = es.filter(e => st[e] === 0).length;
+      t.classList.toggle('over', n > clues[i]);
+      t.classList.toggle('met', n === clues[i] && (open === 0 || es.filter(e => st[e] !== 1).every(e => st[e] === 2)));
+    });
+    const lines = on.filter(Boolean).length;
+    tabBtns.forEach((b, i) => { b.setAttribute('aria-pressed', String(i === round)); b.disabled = i > 0 && rounds.length > 1 && !saved.t && !isDone(); });
+    intro.textContent = rounds.length > 1 && round === 0
+      ? 'Warm-up round. Solve this small one to unlock Round 2. Your clock is already running, so don’t linger.'
+      : rounds.length > 1 ? `Round 2: ${g.R}×${g.C}. One loop, no guessing needed.` : '';
+    intro.hidden = !intro.textContent;
+    if (!sending) status.replaceChildren(el('span', null, done ? 'Solved' : `${lines} ${lines === 1 ? 'line' : 'lines'} drawn`), el('span', 'legend', 'Tap: line → × → clear'));
+    tools.hidden = done; und.disabled = !undo[round].length; if (!armed) clr.textContent = 'Clear';
+    const tutJustDone = rounds.length > 1 && round === 0 && saved.t;
+    next.hidden = !tutJustDone;
+    if (tutJustDone) {
+      const b = el('button', 'btn primary', 'Start Round 2'); b.type = 'button'; b.onclick = () => go(rounds.length - 1);
+      next.replaceChildren(el('p', null, 'Warm-up done. Round 2 is the real one.'), b);
+    }
+    w.win.hidden = !(round === rounds.length - 1 && isDone());
+    if (!w.win.hidden) fillWin(w, p, opts, previewDone);
+  }
+  async function check() {
+    if (!slCheck(g, clues, st.map(x => x === 1 ? 1 : 0))) return;
+    if (rounds.length > 1 && round === 0) { saved.t = true; save(); draw(); return; }
+    if (opts.preview) { previewDone = true; draw(); return; }
+    const edges = st.map(x => x === 1 ? 1 : 0).join('');
+    if (!S.me || sending || edges === lastSent || isDone()) return;
+    sending = true; lastSent = edges; await submitGrid(p, { edges }, status); sending = false; draw();
+  }
+  build(); card._sync = draw; draw(); check();
 }
 
 /* ---------- word search ---------- */
@@ -3202,7 +3375,7 @@ function bootPreview(P) {
   const r = el('div', 'row wrap'); r.append(el('span', 'chip live', (TYPE_LABEL[P.type] || P.type) + ' · preview'), el('span', 'legend', 'Exactly how challengers will see it. Nothing is recorded.'));
   v.append(r, el('h2', null, P.title));
   const card = el('div', 'card'); card.id = 'player'; v.appendChild(card);
-  const mount = { nonogram: mountNonogram, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper, story: mountStory, logic: mountLogic, maze: mountMaze, connections: mountConnections, document: mountDocument }[P.type];
+  const mount = { nonogram: mountNonogram, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper, story: mountStory, logic: mountLogic, maze: mountMaze, connections: mountConnections, document: mountDocument, slitherlink: mountSlitherlink }[P.type];
   if (mount) { store.set('jdc-nono-preview-' + P.id, null); mount(card, P, { preview: true }); }
   else card.appendChild(el('p', 'sub', 'No preview for this puzzle type yet.'));
   const again = el('button', 'btn small', 'Start over'); again.type = 'button'; again.onclick = () => bootPreview(P);
