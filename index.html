@@ -307,6 +307,33 @@ form.ans input:disabled { opacity: .5; }
 .slclue.met { fill: #9aa0ab; }
 .slclue.over { fill: #d2453b; }
 .sltools { gap: 8px; }
+.slguidebox { background: var(--panel); border: 1px solid var(--signal); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.slguidebox h4 { margin: 0; font: 700 17px var(--display); }
+.slguidebox p { margin: 0; }
+.slguidebox .eyebrow { margin: 0; }
+.slguidebtns { gap: 8px; }
+.slwant { color: var(--muted); } .slwant.ok { color: #5fd4a0; }
+.slpips { display: flex; gap: 4px; } .slpips span { width: 7px; height: 7px; border-radius: 50%; background: var(--line); }
+.slpips span.done { background: var(--signal); opacity: .5; } .slpips span.now { background: var(--signal); }
+.slcard { display: flex; flex-direction: column; gap: 12px; padding-top: 4px; }
+.slrule h4 { margin: 0 0 6px; font: 600 14px var(--body); color: var(--ink); }
+.slexamples { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.slexamples figure { margin: 0; background: #fbfaf7; border-radius: 8px; padding: 6px 4px 4px; display: flex; flex-direction: column; align-items: center; gap: 2px; border: 2px solid transparent; }
+.slexamples figure.ok { border-color: rgba(47,143,95,.6); } .slexamples figure.bad { border-color: rgba(210,69,59,.55); }
+.slexamples figcaption { font: 600 11px var(--body); color: #1d2230; text-align: center; }
+.slexamples figure.ok figcaption { color: #157a4a; } .slexamples figure.bad figcaption { color: #b8382f; }
+.slmini { width: 100%; max-width: 74px; height: 56px; }
+.slmline { stroke: #1d2230; stroke-width: .13; stroke-linecap: round; } .slmline.bad { stroke: #b8382f; }
+.slmx { stroke: #d2453b; stroke-width: .06; stroke-linecap: round; }
+.slmclue { font: 700 .62px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; fill: #1d2230; text-anchor: middle; dominant-baseline: middle; }
+.slbadring { fill: rgba(210,69,59,.18); stroke: #d2453b; stroke-width: .05; }
+.slhlcell { fill: rgba(255,159,67,.28); stroke: #ff9f43; stroke-width: .05; }
+.slhldot { fill: rgba(255,159,67,.25); stroke: #ff9f43; stroke-width: .06; }
+.slhledge { stroke: #f07f12; stroke-width: .22; stroke-linecap: round; opacity: .9; animation: slglow 1.2s ease-in-out infinite; }
+.slhledge.wantx { stroke-dasharray: .12 .1; }
+@keyframes slglow { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .slhledge { animation: none; } }
+.slwrap.dim { opacity: .45; }
 .slnext { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; border: 1px solid var(--signal); background: var(--signal-dim); border-radius: 10px; padding: 12px; }
 .slnext p { margin: 0; }
 /* connections */
@@ -1346,7 +1373,8 @@ function slGeom(R, C) {
   for (let r = 0; r <= R; r++) for (let c = 0; c < C; c++) ends[h(r, c)] = [V(r, c), V(r, c + 1)];
   for (let r = 0; r < R; r++) for (let c = 0; c <= C; c++) ends[v(r, c)] = [V(r, c), V(r + 1, c)];
   ends.forEach(([a, b], e) => { vertEdges[a].push(e); vertEdges[b].push(e); });
-  return { R, C, NH, NE, h, v, cellEdges, ends, vertEdges };
+  const xy = e => { if (e < NH) { const r = Math.floor(e / C), c = e % C; return [c, r, c + 1, r]; } const k = e - NH, r = Math.floor(k / (C + 1)), c = k % (C + 1); return [c, r, c, r + 1]; };
+  return { R, C, NH, NE, h, v, cellEdges, ends, vertEdges, xy };
 }
 // 'solved' when every clue is met and the lines make exactly one closed loop.
 function slCheck(g, clues, st) {
@@ -1360,16 +1388,45 @@ function slCheck(g, clues, st) {
   while (stack.length) { const x = stack.pop(); for (const y of adj.get(x)) if (!seen.has(y)) { seen.add(y); stack.push(y); } }
   return seen.size === adj.size;
 }
-function slRules(open) {
-  const d = el('details', 'slrules'); d.open = !!open;
-  d.appendChild(el('summary', null, 'How to play'));
-  const ul = el('ul');
-  ['Draw one single loop along the dotted lines. No branches, no crossings, no loose ends.',
-   'A number says how many sides of its square are part of the loop. Empty squares can have any number.',
-   'Tap a gap once for a line, twice for an × (“no line here”), three times to clear it.',
-   'Start with the 0s and 3s. Every dot has either 0 or 2 lines touching it.'].forEach(t => ul.appendChild(el('li', null, t)));
-  d.appendChild(ul);
-  return d;
+const SL_NS = 'http://www.w3.org/2000/svg';
+const slSvg = (t, a) => { const x = document.createElementNS(SL_NS, t); for (const k in a) x.setAttribute(k, a[k]); return x; };
+// A tiny example board for the rules card. spec: clues string, on/x as 'h01'/'v10' names, bad dots to circle in red.
+function slMini(rows, cols, spec) {
+  const g = slGeom(rows, cols), P = 0.35;
+  const svg = slSvg('svg', { viewBox: `${-P} ${-P} ${cols + 2 * P} ${rows + 2 * P}`, class: 'slmini', 'aria-hidden': 'true' });
+  const E = n => n[0] === 'h' ? g.h(+n[1], +n[2]) : g.v(+n[1], +n[2]);
+  (spec.badDots || []).forEach(([r, c]) => svg.appendChild(slSvg('circle', { cx: c, cy: r, r: 0.28, class: 'slbadring' })));
+  (spec.on || []).forEach(n => { const [x1, y1, x2, y2] = g.xy(E(n)); svg.appendChild(slSvg('line', { x1, y1, x2, y2, class: 'slmline' + (spec.tone === 'bad' ? ' bad' : '') })); });
+  (spec.x || []).forEach(n => { const [x1, y1, x2, y2] = g.xy(E(n)), mx = (x1 + x2) / 2, my = (y1 + y2) / 2, k = 0.12; svg.appendChild(slSvg('path', { d: `M${mx - k} ${my - k}L${mx + k} ${my + k}M${mx + k} ${my - k}L${mx - k} ${my + k}`, class: 'slmx' })); });
+  (spec.clues || '').split('').forEach((ch, i) => { if (ch === '.') return; const t = slSvg('text', { x: (i % cols) + 0.5, y: Math.floor(i / cols) + 0.54, class: 'slmclue' }); t.textContent = ch; svg.appendChild(t); });
+  for (let r = 0; r <= rows; r++) for (let c = 0; c <= cols; c++) svg.appendChild(slSvg('circle', { cx: c, cy: r, r: 0.07, class: 'sldot' }));
+  return svg;
+}
+function slRulesCard() {
+  const box = el('div', 'slcard');
+  const rule = (n, title, items) => {
+    const r = el('div', 'slrule');
+    r.appendChild(el('h4', null, `${n}. ${title}`));
+    const row = el('div', 'slexamples');
+    items.forEach(([svg, ok, cap]) => { const f = el('figure', ok ? 'ok' : 'bad'); f.append(svg, el('figcaption', null, (ok ? '✓ ' : '✗ ') + cap)); row.appendChild(f); });
+    r.appendChild(row); return r;
+  };
+  box.append(
+    rule(1, 'Draw one closed loop', [
+      [slMini(2, 2, { on: ['h00', 'h01', 'h20', 'h21', 'v00', 'v02', 'v10', 'v12'] }), true, 'One loop'],
+      [slMini(2, 2, { on: ['h00', 'h01', 'h20', 'h21', 'v00', 'v02', 'v10', 'v12', 'v01'], tone: 'bad', badDots: [[0, 1]] }), false, 'Branches'],
+      [slMini(2, 3, { on: ['h00', 'h10', 'v00', 'v01', 'h12', 'h22', 'v12', 'v13'], tone: 'bad' }), false, 'Two loops']]),
+    rule(2, 'Numbers count sides', [
+      [slMini(1, 1, { clues: '3', on: ['h00', 'v00', 'v01'], x: ['h10'] }), true, '3 lines'],
+      [slMini(1, 1, { clues: '1', on: ['v01'], x: ['h00', 'h10', 'v00'] }), true, '1 line'],
+      [slMini(1, 1, { clues: '0', x: ['h00', 'h10', 'v00', 'v01'] }), true, '0 = all ×']]),
+    rule(3, 'Every dot has 0 or 2 lines', [
+      [slMini(1, 2, { on: ['h10', 'v01'] }), true, 'Turn'],
+      [slMini(1, 2, { on: ['h10'], tone: 'bad', badDots: [[1, 1]] }), false, 'Dead end'],
+      [slMini(1, 2, { on: ['h10', 'h11', 'v01'], tone: 'bad', badDots: [[1, 1]] }), false, 'Three lines']]),
+  );
+  box.appendChild(el('p', 'legend', 'Tap a gap once for a line, twice for × (“no line here”), three times to clear it.'));
+  return box;
 }
 function mountSlitherlink(card, p, opts = {}) {
   const cfg = p.config || {};
@@ -1377,19 +1434,22 @@ function mountSlitherlink(card, p, opts = {}) {
   const LK = (opts.preview ? 'jdc-sl-preview-' : 'jdc-sl-') + p.id;
   let saved = {}; if (!opts.preview) { try { saved = JSON.parse(store.get(LK) || '{}') || {}; } catch (e) { saved = {}; } }
   const states = rounds.map((rd, i) => { const g = slGeom(rd.rows, rd.cols); const s = saved.s && saved.s[i]; return Array.isArray(s) && s.length === g.NE ? s.map(x => (x === 1 || x === 2) ? x : 0) : Array(g.NE).fill(0); });
-  const tutDone = () => rounds.length > 1 && (saved.t || slCheck(slGeom(rounds[0].rows, rounds[0].cols), rounds[0].clues, states[0]));
-  let round = rounds.length > 1 && !tutDone() ? 0 : rounds.length - 1;
-  if (typeof saved.r === 'number' && saved.r < rounds.length && (saved.r === 0 || tutDone())) round = saved.r;
-  let undo = rounds.map(() => []), previewDone = false, sending = false, lastSent = '';
-  const save = () => { if (!opts.preview) store.set(LK, JSON.stringify({ s: states, r: round, t: !!saved.t })); };
+  const two = rounds.length > 1, steps = two ? (rounds[0].steps || []) : [];
+  let gstep = typeof saved.g === 'number' ? saved.g : -1;          // -1 = rules card, 0..n-1 = walkthrough step, n = walkthrough over
+  let round = two && !saved.t ? 0 : rounds.length - 1;
+  if (typeof saved.r === 'number' && saved.r < rounds.length && (saved.r === 0 || saved.t)) round = saved.r;
+  let undo = rounds.map(() => []), previewDone = false, sending = false, lastSent = '', advancing = null;
+  const save = () => { if (!opts.preview) store.set(LK, JSON.stringify({ s: states, r: round, t: !!saved.t, g: gstep })); };
   const isDone = () => opts.preview ? previewDone : !!solvedState(p, opts);
+  const guiding = () => two && round === 0 && steps.length && !saved.t && gstep < steps.length;
 
   if (cfg.brief) card.appendChild(el('p', 'sub', cfg.brief));
   const tabs = el('div', 'seg sltabs'); tabs.setAttribute('role', 'group'); tabs.setAttribute('aria-label', 'Round');
-  const tabBtns = rounds.map((rd, i) => { const b = el('button', null, rounds.length > 1 ? (i === 0 ? 'Round 1 · Tutorial' : 'Round 2') : 'Puzzle'); b.type = 'button'; b.onclick = () => go(i); tabs.appendChild(b); return b; });
-  if (rounds.length > 1) card.appendChild(tabs);
+  const tabBtns = rounds.map((rd, i) => { const b = el('button', null, two ? (i === 0 ? 'Round 1 · Tutorial' : 'Round 2') : 'Puzzle'); b.type = 'button'; b.onclick = () => go(i); tabs.appendChild(b); return b; });
+  if (two) card.appendChild(tabs);
   const intro = el('p', 'sub slintro'); card.appendChild(intro);
-  const rules = slRules(round === 0 && rounds.length > 1); card.appendChild(rules);
+  const guide = el('div', 'slguidebox'); guide.setAttribute('aria-live', 'polite'); card.appendChild(guide);
+  const rules = el('details', 'slrules'); rules.appendChild(el('summary', null, 'How to play')); rules.appendChild(slRulesCard()); card.appendChild(rules);
   const status = el('div', 'meta'); card.appendChild(status);
   const wrap = el('div', 'slwrap'); card.appendChild(wrap);
   const tools = el('div', 'row sltools');
@@ -1398,43 +1458,37 @@ function mountSlitherlink(card, p, opts = {}) {
   tools.append(und, clr); card.appendChild(tools);
   const next = el('div', 'slnext'); next.hidden = true; card.appendChild(next);
   const w = winCard('Loop closed'); card.appendChild(w.win);
-  const NS = 'http://www.w3.org/2000/svg', svgEl = (t, a) => { const x = document.createElementNS(NS, t); for (const k in a) x.setAttribute(k, a[k]); return x; };
 
-  let g, clues, st, svg, edgeEls, clueEls, armed = false;
+  let g, clues, st, svg, edgeEls, clueEls, hl, armed = false;
   function build() {
     const rd = rounds[round]; g = slGeom(rd.rows, rd.cols); clues = rd.clues.split('').map(ch => ch === '.' ? -1 : +ch); st = states[round];
-    const P = 0.3, Wd = g.C + 2 * P, Ht = g.R + 2 * P;
-    svg = svgEl('svg', { viewBox: `${-P} ${-P} ${Wd} ${Ht}`, class: 'slboard', role: 'img', 'aria-label': `Slitherlink board, ${g.R} by ${g.C}` });
+    const P = 0.3;
+    svg = slSvg('svg', { viewBox: `${-P} ${-P} ${g.C + 2 * P} ${g.R + 2 * P}`, class: 'slboard', role: 'img', 'aria-label': `Slitherlink board, ${g.R} by ${g.C}` });
+    hl = slSvg('g', { class: 'slhl' }); svg.appendChild(hl);
     edgeEls = [];
     for (let e = 0; e < g.NE; e++) {
-      const horiz = e < g.NH, r = horiz ? Math.floor(e / g.C) : Math.floor((e - g.NH) / (g.C + 1)), c = horiz ? e % g.C : (e - g.NH) % (g.C + 1);
-      const x1 = c, y1 = r, x2 = horiz ? c + 1 : c, y2 = horiz ? r : r + 1;
-      const grp = svgEl('g', {});
-      grp.appendChild(svgEl('line', { x1, y1, x2, y2, class: 'slguide' }));
-      grp.appendChild(svgEl('line', { x1, y1, x2, y2, class: 'slline' }));
+      const [x1, y1, x2, y2] = g.xy(e);
+      const grp = slSvg('g', {});
+      grp.appendChild(slSvg('line', { x1, y1, x2, y2, class: 'slguide' }));
+      grp.appendChild(slSvg('line', { x1, y1, x2, y2, class: 'slline' }));
       const mx = (x1 + x2) / 2, my = (y1 + y2) / 2, k = 0.12;
-      const xm = svgEl('path', { d: `M${mx - k} ${my - k}L${mx + k} ${my + k}M${mx + k} ${my - k}L${mx - k} ${my + k}`, class: 'slx' });
-      grp.appendChild(xm); svg.appendChild(grp); edgeEls.push(grp);
+      grp.appendChild(slSvg('path', { d: `M${mx - k} ${my - k}L${mx + k} ${my + k}M${mx + k} ${my - k}L${mx - k} ${my + k}`, class: 'slx' }));
+      svg.appendChild(grp); edgeEls.push(grp);
     }
     clueEls = clues.map((k, i) => {
       if (k < 0) return null;
-      const t = svgEl('text', { x: (i % g.C) + 0.5, y: Math.floor(i / g.C) + 0.53, class: 'slclue' }); t.textContent = String(k); svg.appendChild(t); return t;
+      const t = slSvg('text', { x: (i % g.C) + 0.5, y: Math.floor(i / g.C) + 0.53, class: 'slclue' }); t.textContent = String(k); svg.appendChild(t); return t;
     });
-    for (let r = 0; r <= g.R; r++) for (let c = 0; c <= g.C; c++) svg.appendChild(svgEl('circle', { cx: c, cy: r, r: 0.07, class: 'sldot' }));
+    for (let r = 0; r <= g.R; r++) for (let c = 0; c <= g.C; c++) svg.appendChild(slSvg('circle', { cx: c, cy: r, r: 0.07, class: 'sldot' }));
     svg.addEventListener('pointerdown', onTap);
     wrap.replaceChildren(svg);
   }
   function onTap(ev) {
-    if (doneHere()) return;
+    if (doneHere() || (guiding() && gstep < 0)) return;
     const pt = svg.createSVGPoint(); pt.x = ev.clientX; pt.y = ev.clientY;
     const q = pt.matrixTransform(svg.getScreenCTM().inverse());
-    // nearest edge midpoint, within half a square
-    let best = -1, bd = 0.45;
-    const rr = Math.round(q.y), cc = Math.round(q.x), fr = Math.floor(q.y), fc = Math.floor(q.x);
-    const cand = [];
-    for (const r of [rr - 1, rr, rr + 1]) for (const c of [fc - 1, fc, fc + 1]) if (r >= 0 && r <= g.R && c >= 0 && c < g.C) cand.push([g.h(r, c), c + 0.5, r]);
-    for (const r of [fr - 1, fr, fr + 1]) for (const c of [cc - 1, cc, cc + 1]) if (r >= 0 && r < g.R && c >= 0 && c <= g.C) cand.push([g.v(r, c), c, r + 0.5]);
-    for (const [e, x, y] of cand) { const d = Math.hypot(q.x - x, q.y - y); if (d < bd) { bd = d; best = e; } }
+    let best = -1, bd = 0.45;   // nearest edge midpoint, within half a square
+    for (let e = 0; e < g.NE; e++) { const [x1, y1, x2, y2] = g.xy(e); const d = Math.hypot(q.x - (x1 + x2) / 2, q.y - (y1 + y2) / 2); if (d < bd) { bd = d; best = e; } }
     if (best < 0) return;
     ev.preventDefault();
     undo[round].push([best, st[best]]);
@@ -1449,38 +1503,85 @@ function mountSlitherlink(card, p, opts = {}) {
     armed = false; undo[round].push(...st.map((x, e) => [e, x]).filter(([, x]) => x)); st.fill(0); save(); draw();
   };
   function go(i) {
-    if (i === round || (i > 0 && rounds.length > 1 && !saved.t && !isDone())) return;
-    round = i; save(); build(); rules.open = round === 0 && rounds.length > 1; draw();
+    if (i === round || (i > 0 && two && !saved.t && !isDone())) return;
+    round = i; save(); build(); draw();
+  }
+  const stepDone = s => s.lines.every(e => st[e] === 1) && s.x.every(e => st[e] === 2);
+  function setStep(n) { gstep = n; save(); draw(); }
+  function showMe() {
+    const s = steps[gstep]; if (!s) return;
+    const ch = [];
+    s.lines.forEach(e => { if (st[e] !== 1) { ch.push([e, st[e]]); st[e] = 1; } });
+    s.x.forEach(e => { if (st[e] !== 2) { ch.push([e, st[e]]); st[e] = 2; } });
+    if (ch.length) undo[round].push(...ch);
+    save(); draw(); check();
+  }
+  function drawGuide() {
+    guide.hidden = !guiding();
+    hl.replaceChildren();
+    if (!guiding()) return;
+    if (gstep < 0) {
+      const b = el('button', 'btn primary', 'Walk me through it'); b.type = 'button'; b.onclick = () => setStep(0);
+      const skip = el('button', 'btn small', 'I know how to play'); skip.type = 'button'; skip.onclick = () => setStep(steps.length);
+      guide.replaceChildren(el('p', 'eyebrow', 'The rules'), slRulesCard(), el('div', 'row wrap slguidebtns'));
+      guide.lastChild.append(b, skip);
+      return;
+    }
+    const s = steps[gstep], done = stepDone(s);
+    const head = el('div', 'row between'); head.append(el('p', 'eyebrow', `Step ${gstep + 1} of ${steps.length}`), el('div', 'slpips'));
+    steps.forEach((_, i) => head.lastChild.appendChild(el('span', i < gstep ? 'done' : i === gstep ? 'now' : '')));
+    const btns = el('div', 'row wrap slguidebtns');
+    const back = el('button', 'btn small', 'Back'); back.type = 'button'; back.disabled = gstep === 0; back.onclick = () => setStep(gstep - 1);
+    const show = el('button', 'btn small', 'Show me'); show.type = 'button'; show.onclick = showMe; show.disabled = done;
+    const nxt = el('button', 'btn small' + (done ? ' primary' : ''), gstep === steps.length - 1 ? 'Done' : 'Next'); nxt.type = 'button'; nxt.onclick = () => setStep(gstep + 1);
+    btns.append(back, show, nxt);
+    const want = [s.lines.length ? `${s.lines.length} line${s.lines.length === 1 ? '' : 's'}` : '', s.x.length ? `${s.x.length} ×` : ''].filter(Boolean).join(' and ');
+    guide.replaceChildren(head, el('h4', null, s.title), el('p', null, s.text),
+      el('p', 'legend slwant' + (done ? ' ok' : ''), done ? '✓ Nice. That’s the step.' : `Glowing on the board: ${want}.`), btns);
+    // highlights on the board
+    (s.cells || []).forEach(i => hl.appendChild(slSvg('rect', { x: i % g.C + 0.06, y: Math.floor(i / g.C) + 0.06, width: 0.88, height: 0.88, rx: 0.12, class: 'slhlcell' })));
+    (s.dots || []).forEach(vi => hl.appendChild(slSvg('circle', { cx: vi % (g.C + 1), cy: Math.floor(vi / (g.C + 1)), r: 0.26, class: 'slhldot' })));
+    [...s.lines.map(e => [e, 1]), ...s.x.map(e => [e, 2])].forEach(([e, want]) => {
+      if (st[e] === want) return;
+      const [x1, y1, x2, y2] = g.xy(e);
+      hl.appendChild(slSvg('line', { x1, y1, x2, y2, class: 'slhledge' + (want === 2 ? ' wantx' : '') }));
+    });
   }
   function draw() {
     const done = doneHere(), on = st.map(x => x === 1);
     edgeEls.forEach((grp, e) => { grp.classList.toggle('on', st[e] === 1); grp.classList.toggle('x', st[e] === 2); grp.classList.toggle('won', done && st[e] === 1); });
     clueEls.forEach((t, i) => {
       if (!t) return;
-      const es = g.cellEdges[i], n = es.filter(e => on[e]).length, open = es.filter(e => st[e] === 0).length;
+      const es = g.cellEdges[i], n = es.filter(e => on[e]).length;
       t.classList.toggle('over', n > clues[i]);
-      t.classList.toggle('met', n === clues[i] && (open === 0 || es.filter(e => st[e] !== 1).every(e => st[e] === 2)));
+      t.classList.toggle('met', n === clues[i] && es.every(e => st[e] !== 0));
     });
     const lines = on.filter(Boolean).length;
-    tabBtns.forEach((b, i) => { b.setAttribute('aria-pressed', String(i === round)); b.disabled = i > 0 && rounds.length > 1 && !saved.t && !isDone(); });
-    intro.textContent = rounds.length > 1 && round === 0
-      ? 'Warm-up round. Solve this small one to unlock Round 2. Your clock is already running, so don’t linger.'
-      : rounds.length > 1 ? `Round 2: ${g.R}×${g.C}. One loop, no guessing needed.` : '';
+    tabBtns.forEach((b, i) => { b.setAttribute('aria-pressed', String(i === round)); b.disabled = i > 0 && two && !saved.t && !isDone(); });
+    intro.textContent = two && round === 0
+      ? (guiding() ? 'Warm-up round. Learn the rules here, then Round 2 unlocks. Your clock is already running.' : 'Warm-up round. Finish this loop to unlock Round 2.')
+      : two ? `Round 2: ${g.R}×${g.C}. Same rules, no guessing needed.` : '';
     intro.hidden = !intro.textContent;
+    rules.hidden = guiding();
+    drawGuide();
     if (!sending) status.replaceChildren(el('span', null, done ? 'Solved' : `${lines} ${lines === 1 ? 'line' : 'lines'} drawn`), el('span', 'legend', 'Tap: line → × → clear'));
+    wrap.classList.toggle('dim', guiding() && gstep < 0);
     tools.hidden = done; und.disabled = !undo[round].length; if (!armed) clr.textContent = 'Clear';
-    const tutJustDone = rounds.length > 1 && round === 0 && saved.t;
+    const tutJustDone = two && round === 0 && saved.t;
     next.hidden = !tutJustDone;
     if (tutJustDone) {
       const b = el('button', 'btn primary', 'Start Round 2'); b.type = 'button'; b.onclick = () => go(rounds.length - 1);
-      next.replaceChildren(el('p', null, 'Warm-up done. Round 2 is the real one.'), b);
+      next.replaceChildren(el('p', null, 'Loop closed. Round 2 is the real one: bigger board, fewer clues, same three rules.'), b);
     }
     w.win.hidden = !(round === rounds.length - 1 && isDone());
     if (!w.win.hidden) fillWin(w, p, opts, previewDone);
   }
   async function check() {
+    if (guiding() && gstep >= 0 && stepDone(steps[gstep]) && gstep < steps.length - 1 && !advancing) {
+      advancing = setTimeout(() => { advancing = null; if (guiding() && stepDone(steps[gstep])) setStep(gstep + 1); }, 900);
+    }
     if (!slCheck(g, clues, st.map(x => x === 1 ? 1 : 0))) return;
-    if (rounds.length > 1 && round === 0) { saved.t = true; save(); draw(); return; }
+    if (two && round === 0) { saved.t = true; gstep = steps.length; save(); draw(); return; }
     if (opts.preview) { previewDone = true; draw(); return; }
     const edges = st.map(x => x === 1 ? 1 : 0).join('');
     if (!S.me || sending || edges === lastSent || isDone()) return;
