@@ -312,7 +312,7 @@ form.ans input:disabled { opacity: .5; }
 .slguidebox p { margin: 0; }
 .slguidebox .eyebrow { margin: 0; }
 .slguidebtns { gap: 8px; }
-.slwant { color: var(--muted); } .slwant.ok { color: #5fd4a0; }
+.slwant { color: var(--muted); } .slwant.ok { color: #5fd4a0; } .slwant.bad { color: #ff7a6e; }
 .slpips { display: flex; gap: 4px; } .slpips span { width: 7px; height: 7px; border-radius: 50%; background: var(--line); }
 .slpips span.done { background: var(--signal); opacity: .5; } .slpips span.now { background: var(--signal); }
 .slcard { display: flex; flex-direction: column; gap: 12px; padding-top: 4px; }
@@ -1459,7 +1459,7 @@ function mountSlitherlink(card, p, opts = {}) {
   const next = el('div', 'slnext'); next.hidden = true; card.appendChild(next);
   const w = winCard('Loop closed'); card.appendChild(w.win);
 
-  let g, clues, st, svg, edgeEls, clueEls, hl, armed = false;
+  let g, clues, st, svg, edgeEls, clueEls, hl, armed = false, nudge = '';
   function build() {
     const rd = rounds[round]; g = slGeom(rd.rows, rd.cols); clues = rd.clues.split('').map(ch => ch === '.' ? -1 : +ch); st = states[round];
     const P = 0.3;
@@ -1491,6 +1491,15 @@ function mountSlitherlink(card, p, opts = {}) {
     for (let e = 0; e < g.NE; e++) { const [x1, y1, x2, y2] = g.xy(e); const d = Math.hypot(q.x - (x1 + x2) / 2, q.y - (y1 + y2) / 2); if (d < bd) { bd = d; best = e; } }
     if (best < 0) return;
     ev.preventDefault();
+    if (guiding()) {
+      const s = steps[gstep], want = s.lines.includes(best) ? 1 : s.x.includes(best) ? 2 : 0;
+      if (!want) { nudge = 'Not that one. Tap one of the glowing orange sides.'; drawGuide(); return; }
+      if (st[best] === want) return;
+      nudge = '';
+      undo[round].push([best, st[best]]);
+      st[best] = want === 1 ? 1 : st[best] === 1 ? 2 : 1;   // × still takes two taps, like the real game
+      save(); draw(); check(); return;
+    }
     undo[round].push([best, st[best]]);
     st[best] = (st[best] + 1) % 3;
     save(); draw(); check();
@@ -1507,7 +1516,7 @@ function mountSlitherlink(card, p, opts = {}) {
     round = i; save(); build(); draw();
   }
   const stepDone = s => s.lines.every(e => st[e] === 1) && s.x.every(e => st[e] === 2);
-  function setStep(n) { gstep = n; save(); draw(); }
+  function setStep(n) { gstep = n; nudge = ''; save(); draw(); }
   function showMe() {
     const s = steps[gstep]; if (!s) return;
     const ch = [];
@@ -1533,11 +1542,11 @@ function mountSlitherlink(card, p, opts = {}) {
     const btns = el('div', 'row wrap slguidebtns');
     const back = el('button', 'btn small', 'Back'); back.type = 'button'; back.disabled = gstep === 0; back.onclick = () => setStep(gstep - 1);
     const show = el('button', 'btn small', 'Show me'); show.type = 'button'; show.onclick = showMe; show.disabled = done;
-    const nxt = el('button', 'btn small' + (done ? ' primary' : ''), gstep === steps.length - 1 ? 'Done' : 'Next'); nxt.type = 'button'; nxt.onclick = () => setStep(gstep + 1);
-    btns.append(back, show, nxt);
+    btns.append(back, show);
+    if (gstep < steps.length - 1) { const nxt = el('button', 'btn small' + (done ? ' primary' : ''), done ? 'Next' : 'Next 🔒'); nxt.type = 'button'; nxt.disabled = !done; nxt.onclick = () => { if (stepDone(steps[gstep])) setStep(gstep + 1); }; btns.appendChild(nxt); }
     const want = [s.lines.length ? `${s.lines.length} line${s.lines.length === 1 ? '' : 's'}` : '', s.x.length ? `${s.x.length} ×` : ''].filter(Boolean).join(' and ');
     guide.replaceChildren(head, el('h4', null, s.title), el('p', null, s.text),
-      el('p', 'legend slwant' + (done ? ' ok' : ''), done ? '✓ Nice. That’s the step.' : `Glowing on the board: ${want}.`), btns);
+      el('p', 'legend slwant' + (done ? ' ok' : nudge ? ' bad' : ''), done ? (gstep === steps.length - 1 ? '✓ Loop closed.' : '✓ Nice. That’s the step.') : nudge || `Do this step to continue. Glowing on the board: ${want}.`), btns);
     // highlights on the board
     (s.cells || []).forEach(i => hl.appendChild(slSvg('rect', { x: i % g.C + 0.06, y: Math.floor(i / g.C) + 0.06, width: 0.88, height: 0.88, rx: 0.12, class: 'slhlcell' })));
     (s.dots || []).forEach(vi => hl.appendChild(slSvg('circle', { cx: vi % (g.C + 1), cy: Math.floor(vi / (g.C + 1)), r: 0.26, class: 'slhldot' })));
@@ -1566,7 +1575,7 @@ function mountSlitherlink(card, p, opts = {}) {
     drawGuide();
     if (!sending) status.replaceChildren(el('span', null, done ? 'Solved' : `${lines} ${lines === 1 ? 'line' : 'lines'} drawn`), el('span', 'legend', 'Tap: line → × → clear'));
     wrap.classList.toggle('dim', guiding() && gstep < 0);
-    tools.hidden = done; und.disabled = !undo[round].length; if (!armed) clr.textContent = 'Clear';
+    tools.hidden = done; clr.hidden = guiding(); und.disabled = !undo[round].length; if (!armed) clr.textContent = 'Clear';
     const tutJustDone = two && round === 0 && saved.t;
     next.hidden = !tutJustDone;
     if (tutJustDone) {
