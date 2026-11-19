@@ -307,6 +307,13 @@ form.ans input:disabled { opacity: .5; }
 .slclue.met { fill: #9aa0ab; }
 .slclue.over { fill: #d2453b; }
 .sltools { gap: 8px; }
+.sltoolbar { display: flex; justify-content: center; gap: 4px; background: #f1f1f1; border: 1px solid #ddd; border-radius: 12px; padding: 5px; align-self: center; }
+.sltool { width: 46px; height: 40px; border-radius: 8px; border: 0; background: transparent; color: #222; display: grid; place-items: center; cursor: pointer; }
+.sltool svg { width: 26px; height: 26px; }
+.sltool[aria-pressed="true"] { background: #dde3f3; box-shadow: inset 0 0 0 2px #2c5be0; }
+.sltool:focus-visible { outline: 2px solid var(--signal); outline-offset: 1px; }
+.sltip { text-align: center; margin-top: -4px; }
+.slshade { fill: transparent; } .slshade.s1 { fill: #d9d7ff; } .slshade.s2 { fill: #ffdcdc; }
 .slguidebox { background: var(--panel); border: 1px solid var(--signal); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 .slguidebox h4 { margin: 0; font: 700 17px var(--display); }
 .slguidebox p { margin: 0; }
@@ -1435,11 +1442,13 @@ function mountSlitherlink(card, p, opts = {}) {
   let saved = {}; if (!opts.preview) { try { saved = JSON.parse(store.get(LK) || '{}') || {}; } catch (e) { saved = {}; } }
   const states = rounds.map((rd, i) => { const g = slGeom(rd.rows, rd.cols); const s = saved.s && saved.s[i]; return Array.isArray(s) && s.length === g.NE ? s.map(x => (x === 1 || x === 2) ? x : 0) : Array(g.NE).fill(0); });
   const two = rounds.length > 1, steps = two ? (rounds[0].steps || []) : [];
+  const shades = rounds.map((rd, i) => { const s = saved.c && saved.c[i]; return Array.isArray(s) && s.length === rd.rows * rd.cols ? s.map(x => (x === 1 || x === 2) ? x : 0) : Array(rd.rows * rd.cols).fill(0); });
+  let mode = store.get('jdc-sl-mode') || 'auto'; if (!['auto', 'line', 'x', 'erase', 'shade'].includes(mode)) mode = 'auto';
   let gstep = typeof saved.g === 'number' ? saved.g : -1;          // -1 = rules card, 0..n-1 = walkthrough step, n = walkthrough over
   let round = two && !saved.t ? 0 : rounds.length - 1;
   if (typeof saved.r === 'number' && saved.r < rounds.length && (saved.r === 0 || saved.t)) round = saved.r;
   let undo = rounds.map(() => []), previewDone = false, sending = false, lastSent = '', advancing = null;
-  const save = () => { if (!opts.preview) store.set(LK, JSON.stringify({ s: states, r: round, t: !!saved.t, g: gstep })); };
+  const save = () => { if (!opts.preview) store.set(LK, JSON.stringify({ s: states, c: shades, r: round, t: !!saved.t, g: gstep })); };
   const isDone = () => opts.preview ? previewDone : !!solvedState(p, opts);
   const guiding = () => two && round === 0 && steps.length && !saved.t && gstep < steps.length;
 
@@ -1451,6 +1460,17 @@ function mountSlitherlink(card, p, opts = {}) {
   const guide = el('div', 'slguidebox'); guide.setAttribute('aria-live', 'polite'); card.appendChild(guide);
   const rules = el('details', 'slrules'); rules.appendChild(el('summary', null, 'How to play')); rules.appendChild(slRulesCard()); card.appendChild(rules);
   const status = el('div', 'meta'); card.appendChild(status);
+  const bar = el('div', 'sltoolbar'); bar.setAttribute('role', 'group'); bar.setAttribute('aria-label', 'Drawing tool');
+  const ICON = {
+    auto: '<rect x="3" y="3" width="10" height="10" fill="currentColor"/><rect x="11" y="9" width="11" height="11" fill="#fff" stroke="currentColor" stroke-width="1.3"/><path d="M14.5 12.5l4 4M18.5 12.5l-4 4" stroke="#d2453b" stroke-width="1.6"/>',
+    line: '<rect x="4" y="4" width="16" height="16" rx="3" fill="currentColor"/>',
+    x: '<rect x="4" y="4" width="16" height="16" rx="3" fill="#fff" stroke="currentColor" stroke-width="1.6"/><path d="M9.5 9.5l5 5M14.5 9.5l-5 5" stroke="#d2453b" stroke-width="2"/>',
+    erase: '<path d="M4 15l7-7 5 5-4 4H7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M13 19h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
+    shade: '<rect x="3" y="3" width="10" height="10" fill="#c9c6ff" stroke="currentColor" stroke-width="1.2"/><rect x="11" y="9" width="11" height="11" fill="#ffd3d3" stroke="currentColor" stroke-width="1.2"/>' };
+  const TIP = { auto: 'Auto: tap for line, again for ×, again to clear', line: 'Line', x: '× (no line here)', erase: 'Erase', shade: 'Shade squares: tap a square for blue, again for pink' };
+  const modeBtns = Object.keys(ICON).map(k => { const b = el('button', 'sltool'); b.type = 'button'; b.title = TIP[k]; b.setAttribute('aria-label', TIP[k]); b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>`; b.onclick = () => { mode = k; store.set('jdc-sl-mode', k); draw(); }; bar.appendChild(b); return [k, b]; });
+  const modeTip = el('p', 'legend sltip');
+  card.append(bar, modeTip);
   const wrap = el('div', 'slwrap'); card.appendChild(wrap);
   const tools = el('div', 'row sltools');
   const und = el('button', 'btn small', 'Undo'); und.type = 'button';
@@ -1459,11 +1479,12 @@ function mountSlitherlink(card, p, opts = {}) {
   const next = el('div', 'slnext'); next.hidden = true; card.appendChild(next);
   const w = winCard('Loop closed'); card.appendChild(w.win);
 
-  let g, clues, st, svg, edgeEls, clueEls, hl, armed = false, nudge = '';
+  let g, clues, st, sh, svg, edgeEls, clueEls, hl, shadeEls, armed = false, nudge = '';
   function build() {
-    const rd = rounds[round]; g = slGeom(rd.rows, rd.cols); clues = rd.clues.split('').map(ch => ch === '.' ? -1 : +ch); st = states[round];
+    const rd = rounds[round]; g = slGeom(rd.rows, rd.cols); clues = rd.clues.split('').map(ch => ch === '.' ? -1 : +ch); st = states[round]; sh = shades[round];
     const P = 0.3;
     svg = slSvg('svg', { viewBox: `${-P} ${-P} ${g.C + 2 * P} ${g.R + 2 * P}`, class: 'slboard', role: 'img', 'aria-label': `Slitherlink board, ${g.R} by ${g.C}` });
+    shadeEls = sh.map((_, i) => { const r = slSvg('rect', { x: i % g.C, y: Math.floor(i / g.C), width: 1, height: 1, class: 'slshade' }); svg.appendChild(r); return r; });
     hl = slSvg('g', { class: 'slhl' }); svg.appendChild(hl);
     edgeEls = [];
     for (let e = 0; e < g.NE; e++) {
@@ -1487,6 +1508,16 @@ function mountSlitherlink(card, p, opts = {}) {
     if (doneHere() || (guiding() && gstep < 0)) return;
     const pt = svg.createSVGPoint(); pt.x = ev.clientX; pt.y = ev.clientY;
     const q = pt.matrixTransform(svg.getScreenCTM().inverse());
+    const cr = Math.floor(q.y), cc = Math.floor(q.x), cellAt = cr >= 0 && cr < g.R && cc >= 0 && cc < g.C ? cr * g.C + cc : -1;
+    if (!guiding() && cellAt >= 0 && (mode === 'shade' || mode === 'erase')) {
+      // shade mode: tap a square to cycle blue → pink → none. Erase: a tap near the middle of a square clears its shade.
+      const centre = Math.hypot(q.x - cc - 0.5, q.y - cr - 0.5) < 0.3;
+      if (mode === 'shade' || (centre && sh[cellAt])) {
+        ev.preventDefault();
+        const old = sh[cellAt], nv = mode === 'erase' ? 0 : (old + 1) % 3;
+        undo[round].push(['c', cellAt, old]); sh[cellAt] = nv; save(); draw(); return;
+      }
+    }
     let best = -1, bd = 0.45;   // nearest edge midpoint, within half a square
     for (let e = 0; e < g.NE; e++) { const [x1, y1, x2, y2] = g.xy(e); const d = Math.hypot(q.x - (x1 + x2) / 2, q.y - (y1 + y2) / 2); if (d < bd) { bd = d; best = e; } }
     if (best < 0) return;
@@ -1500,16 +1531,19 @@ function mountSlitherlink(card, p, opts = {}) {
       st[best] = want === 1 ? 1 : st[best] === 1 ? 2 : 1;   // × still takes two taps, like the real game
       save(); draw(); check(); return;
     }
-    undo[round].push([best, st[best]]);
-    st[best] = (st[best] + 1) % 3;
+    if (mode === 'shade' || (mode === 'erase' && best < 0)) return;
+    const old = st[best];
+    const nxt = mode === 'line' ? (old === 1 ? 0 : 1) : mode === 'x' ? (old === 2 ? 0 : 2) : mode === 'erase' ? 0 : (old + 1) % 3;
+    if (nxt === old) return;
+    undo[round].push([best, old]); st[best] = nxt;
     save(); draw(); check();
   }
   function doneHere() { return round === rounds.length - 1 ? isDone() : !!saved.t; }
-  und.onclick = () => { const u = undo[round].pop(); if (!u || doneHere()) return; st[u[0]] = u[1]; save(); draw(); };
+  und.onclick = () => { const u = undo[round].pop(); if (!u || doneHere()) return; if (u[0] === 'c') sh[u[1]] = u[2]; else st[u[0]] = u[1]; save(); draw(); };
   clr.onclick = () => {
-    if (doneHere() || !st.some(x => x)) return;
+    if (doneHere() || (!st.some(x => x) && !sh.some(x => x))) return;
     if (!armed) { armed = true; clr.textContent = 'Sure? Clear all'; setTimeout(() => { armed = false; draw(); }, 3000); return; }
-    armed = false; undo[round].push(...st.map((x, e) => [e, x]).filter(([, x]) => x)); st.fill(0); save(); draw();
+    armed = false; undo[round].push(...st.map((x, e) => [e, x]).filter(([, x]) => x), ...sh.map((x, i) => ['c', i, x]).filter(u => u[2])); st.fill(0); sh.fill(0); save(); draw();
   };
   function go(i) {
     if (i === round || (i > 0 && two && !saved.t && !isDone())) return;
@@ -1558,6 +1592,9 @@ function mountSlitherlink(card, p, opts = {}) {
   }
   function draw() {
     const done = doneHere(), on = st.map(x => x === 1);
+    shadeEls.forEach((r, i) => r.setAttribute('class', 'slshade' + (sh[i] ? ' s' + sh[i] : '')));
+    modeBtns.forEach(([k, b]) => b.setAttribute('aria-pressed', String(k === mode)));
+    bar.hidden = done || guiding(); modeTip.hidden = bar.hidden; modeTip.textContent = TIP[mode];
     edgeEls.forEach((grp, e) => { grp.classList.toggle('on', st[e] === 1); grp.classList.toggle('x', st[e] === 2); grp.classList.toggle('won', done && st[e] === 1); });
     clueEls.forEach((t, i) => {
       if (!t) return;
@@ -1573,7 +1610,7 @@ function mountSlitherlink(card, p, opts = {}) {
     intro.hidden = !intro.textContent;
     rules.hidden = guiding();
     drawGuide();
-    if (!sending) status.replaceChildren(el('span', null, done ? 'Solved' : `${lines} ${lines === 1 ? 'line' : 'lines'} drawn`), el('span', 'legend', 'Tap: line → × → clear'));
+    if (!sending) status.replaceChildren(el('span', null, done ? 'Solved' : `${lines} ${lines === 1 ? 'line' : 'lines'} drawn`), guiding() ? el('span', 'legend', 'Tap the glowing sides') : '');
     wrap.classList.toggle('dim', guiding() && gstep < 0);
     tools.hidden = done; clr.hidden = guiding(); und.disabled = !undo[round].length; if (!armed) clr.textContent = 'Clear';
     const tutJustDone = two && round === 0 && saved.t;
