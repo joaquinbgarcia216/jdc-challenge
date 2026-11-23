@@ -1816,12 +1816,15 @@ function findDrawScene(x, L) {
 }
 
 function mountFindit(card, p, opts = {}) {
-  const cfg = p.config || {}, L = findLayout(cfg), T = L.figures[L.target];
+  // Two kinds: a drawn crowd (seed) or a real picture (cfg.image, cfg.w, cfg.h). For pictures the answer box only exists on the server.
+  const cfg = p.config || {}, IMG = !!cfg.image;
+  const L = IMG ? { W: cfg.w, H: cfg.h, box: cfg.previewBox || null } : findLayout(cfg), T = IMG ? null : L.figures[L.target];
   if (cfg.brief) card.appendChild(el('p', 'sub', cfg.brief));
   const wanted = el('div', 'findwant');
   const tc = el('canvas'); tc.width = 120; tc.height = 150; tc.setAttribute('aria-hidden', 'true');
-  wanted.append(tc, el('p', null, findDescribe(L.T)));
-  card.appendChild(wanted);
+  if (!IMG) { wanted.append(tc, el('p', null, findDescribe(L.T))); card.appendChild(wanted); }
+  let pic = null, picReady = false, lastTap = null;
+  if (IMG) { pic = new Image(); pic.decoding = 'async'; pic.onload = () => { picReady = true; draw(); }; pic.onerror = () => status.replaceChildren(el('span', null, 'The picture didn’t load. Refresh to try again.')); pic.src = cfg.image; }
   const status = el('div', 'meta'); card.appendChild(status);
   const view = el('div', 'findview'); const cv = el('canvas'); cv.setAttribute('aria-label', 'Crowd scene. Tap the dancer you are looking for.'); cv.setAttribute('role', 'img');
   const zb = el('div', 'findzoom');
@@ -1833,11 +1836,13 @@ function mountFindit(card, p, opts = {}) {
   const w = winCard('Found them'); card.appendChild(w.win);
 
   // big "wanted" drawing of the target
-  const tx2 = tc.getContext('2d'); const sc = 2.25;
-  tx2.fillStyle = '#d9a86c'; tx2.beginPath(); tx2.roundRect(0, 0, 120, 150, 12); tx2.fill();
-  tx2.save(); tx2.scale(sc, sc);
-  findDrawFig(tx2, Object.assign({}, T, { x: 52 / sc, y: 140 / sc, s: 1, flip: 0 }));
-  tx2.restore();
+  if (!IMG) {
+    const tx2 = tc.getContext('2d'); const sc = 2.25;
+    tx2.fillStyle = '#d9a86c'; tx2.beginPath(); tx2.roundRect(0, 0, 120, 150, 12); tx2.fill();
+    tx2.save(); tx2.scale(sc, sc);
+    findDrawFig(tx2, Object.assign({}, T, { x: 52 / sc, y: 140 / sc, s: 1, flip: 0 }));
+    tx2.restore();
+  }
 
   let scale = 1, ox = 0, oy = 0, vw = 0, vh = 0, minScale = 1, previewDone = false, marks = [], busy = false, raf = 0, lt;
   const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
@@ -1848,6 +1853,7 @@ function mountFindit(card, p, opts = {}) {
     oy = sh <= vh ? (vh - sh) / 2 : Math.min(0, Math.max(vh - sh, oy));
   }
   function size() {
+    if (IMG && view.clientWidth) { const want = Math.round(Math.max(260, Math.min(window.innerHeight * 0.7, view.clientWidth * L.H / L.W))) + 'px'; if (view.style.height !== want) view.style.height = want; }   // box follows the picture's shape
     vw = view.clientWidth; vh = view.clientHeight; if (!vw || !vh) return;
     cv.width = Math.round(vw * dpr); cv.height = Math.round(vh * dpr);
     const fit = Math.min(vw / L.W, vh / L.H), first = minScale === 1 && scale === 1;
@@ -1855,7 +1861,7 @@ function mountFindit(card, p, opts = {}) {
     clamp(); draw();
   }
   function zoomAt(f, px, py) {
-    const ns = Math.max(minScale, Math.min(minScale * 7, scale * f));
+    const ns = Math.max(minScale, Math.min(IMG ? Math.max(minScale * 7, 3) : minScale * 7, scale * f));   // pictures zoom to 3× their real size
     ox = px - (px - ox) * (ns / scale); oy = py - (py - oy) * (ns / scale); scale = ns; clamp(); draw();
   }
   function draw() {
@@ -1864,10 +1870,12 @@ function mountFindit(card, p, opts = {}) {
       const x = cv.getContext('2d');
       x.setTransform(1, 0, 0, 1, 0, 0); x.fillStyle = '#121620'; x.fillRect(0, 0, cv.width, cv.height);
       x.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * ox, dpr * oy);
-      findDrawScene(x, L);
+      if (IMG) { if (picReady) { x.imageSmoothingQuality = 'high'; x.drawImage(pic, 0, 0, L.W, L.H); } else { x.fillStyle = '#9aa3b5'; x.font = `${16 / scale}px sans-serif`; x.fillText('Loading picture…', 20 / scale, 30 / scale); } }
+      else findDrawScene(x, L);
       const now = performance.now(); marks = marks.filter(m => now - m.t < 900);
       marks.forEach(m => { const a = 1 - (now - m.t) / 900; x.strokeStyle = `rgba(255,107,107,${a})`; x.lineWidth = 4 / scale; const r = 10 / scale; x.beginPath(); x.moveTo(m.x - r, m.y - r); x.lineTo(m.x + r, m.y + r); x.moveTo(m.x + r, m.y - r); x.lineTo(m.x - r, m.y + r); x.stroke(); });
-      if (isDone()) { const b = L.box; x.strokeStyle = '#5fd4a0'; x.lineWidth = 4 / scale; x.beginPath(); x.ellipse((b.x0 + b.x1) / 2 * L.W, (b.y0 + b.y1) / 2 * L.H, (b.x1 - b.x0) * L.W * .8, (b.y1 - b.y0) * L.H * .7, 0, 0, 7); x.stroke(); }
+      if (isDone() && !L.box && lastTap) { x.strokeStyle = '#5fd4a0'; x.lineWidth = 4 / scale; x.beginPath(); x.arc(lastTap.x, lastTap.y, 26 / Math.max(scale, 0.6), 0, 7); x.stroke(); }
+      if (isDone() && L.box) { const b = L.box; x.strokeStyle = '#5fd4a0'; x.lineWidth = 4 / scale; x.beginPath(); x.ellipse((b.x0 + b.x1) / 2 * L.W, (b.y0 + b.y1) / 2 * L.H, (b.x1 - b.x0) * L.W * .8, (b.y1 - b.y0) * L.H * .7, 0, 0, 7); x.stroke(); }
       if (marks.length) draw();
     });
   }
@@ -1875,7 +1883,8 @@ function mountFindit(card, p, opts = {}) {
     if (isDone() || busy) return;
     const wx = (px - ox) / scale, wy = (py - oy) / scale, nx = wx / L.W, ny = wy / L.H;
     if (nx < 0 || ny < 0 || nx > 1 || ny > 1) return;
-    const b = L.box, hit = nx >= b.x0 && nx <= b.x1 && ny >= b.y0 && ny <= b.y1;
+    const b = L.box, hit = !!b && nx >= b.x0 && nx <= b.x1 && ny >= b.y0 && ny <= b.y1;
+    lastTap = { x: wx, y: wy };
     if (opts.preview) {
       if (hit) { previewDone = true; sync(); } else { marks.push({ x: wx, y: wy, t: performance.now() }); draw(); }
       return;
