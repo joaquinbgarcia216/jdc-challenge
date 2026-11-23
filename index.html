@@ -1861,7 +1861,7 @@ function mountFindit(card, p, opts = {}) {
     clamp(); draw();
   }
   function zoomAt(f, px, py) {
-    const ns = Math.max(minScale, Math.min(IMG ? Math.max(minScale * 7, 3) : minScale * 7, scale * f));   // pictures zoom to 3× their real size
+    const ns = Math.max(minScale, Math.min(IMG ? Math.max(minScale * 7, cfg.maxZoom || 3) : minScale * 7, scale * f));   // pictures zoom to 3× real size, or cfg.maxZoom
     ox = px - (px - ox) * (ns / scale); oy = py - (py - oy) * (ns / scale); scale = ns; clamp(); draw();
   }
   function draw() {
