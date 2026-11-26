@@ -328,6 +328,8 @@ form.ans input:disabled { opacity: .5; }
 .mskey.used { color: var(--muted); background: transparent; text-decoration: line-through; text-decoration-thickness: 1px; }
 .mskey.here { border-color: var(--signal); color: var(--signal); text-decoration: none; }
 .mskey:disabled { opacity: .35; cursor: default; }
+.mscell .msnum.pending { color: var(--signal); }
+@media (pointer: coarse) { .mskeys { display: none; } }
 .sltoolbar { display: flex; justify-content: center; gap: 4px; background: #f1f1f1; border: 1px solid #ddd; border-radius: 12px; padding: 5px; align-self: center; }
 .sltool { width: 46px; height: 40px; border-radius: 8px; border: 0; background: transparent; color: #222; display: grid; place-items: center; cursor: pointer; }
 .sltool svg { width: 26px; height: 26px; }
@@ -1433,6 +1435,7 @@ function mountMagicSquare(card, p, opts = {}) {
   const gridBox = el('div', 'msgrid'); card.appendChild(gridBox);
   const clueBar = el('p', 'msclue'); card.appendChild(clueBar);
   const pad = el('div', 'mspad'); card.appendChild(pad);
+  const keyHint = el('p', 'legend mskeys'); card.appendChild(keyHint);
   const tools = el('div', 'row sltools');
   const und = el('button', 'btn small', 'Undo'); und.type = 'button';
   const era = el('button', 'btn small', 'Erase'); era.type = 'button';
@@ -1461,7 +1464,7 @@ function mountMagicSquare(card, p, opts = {}) {
     for (let r = 0; r < n; r++) {
       for (let c = 0; c < n; c++) {
         const i = r * n + c, b = el('button', 'mscell'); b.type = 'button';
-        b.onclick = () => { if (locked(i) || doneHere()) return; sel = sel === i ? -1 : i; draw(); };
+        b.onclick = () => { if (locked(i) || doneHere()) return; clearPend(); sel = sel === i ? -1 : i; draw(); };
         tbl.appendChild(b); cells.push(b);
       }
       const s = el('div', 'mssum'); tbl.appendChild(s); rowSums.push(s);
@@ -1474,12 +1477,41 @@ function mountMagicSquare(card, p, opts = {}) {
     padBtns = [];
     for (let x = 1; x <= maxv; x++) { const b = el('button', 'mskey', String(x)); b.type = 'button'; b.onclick = () => put(x); pad.appendChild(b); padBtns.push(b); }
   }
-  function put(x) {
-    if (sel < 0 || locked(sel) || doneHere()) return;
-    if (x && v.includes(x) && v[sel] !== x) { const j = v.indexOf(x); if (locked(j)) return; undo[round].push([j, v[j]]); v[j] = 0; }   // a number lives in one cell: move it
-    undo[round].push([sel, v[sel]]); v[sel] = v[sel] === x ? 0 : x;
+  function place(x) {
+    if (sel < 0 || locked(sel) || doneHere() || v[sel] === x) return;
+    if (x && v.includes(x)) { const j = v.indexOf(x); if (locked(j)) return; undo[round].push([j, v[j]]); v[j] = 0; }   // a number lives in one cell: move it
+    undo[round].push([sel, v[sel]]); v[sel] = x;
     msg = ''; save(); draw(); check();
   }
+  function put(x) { if (sel >= 0) place(v[sel] === x ? 0 : x); }   // pad: tapping the number a square already has clears it
+  // Typing on a laptop: 1–9 go in straight away; a 1 waits a moment in case it's 10–16.
+  let pend = null, pendT = null;
+  const clearPend = () => { clearTimeout(pendT); pend = null; };
+  function moveSel(dr, dc) {
+    if (sel < 0) { sel = v.findIndex((_, i) => !locked(i)); return draw(); }
+    let r = Math.floor(sel / n), c = sel % n;
+    for (let k = 0; k < n; k++) { r += dr; c += dc; if (r < 0 || r >= n || c < 0 || c >= n) return; if (!locked(r * n + c)) { sel = r * n + c; return draw(); } }
+  }
+  function onKey(e) {
+    if (!card.isConnected) { document.removeEventListener('keydown', onKey); return; }
+    if (doneHere() || /^(INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || '')) return;
+    const k = e.key;
+    if ((e.ctrlKey || e.metaKey) && k.toLowerCase() === 'z') { e.preventDefault(); clearPend(); und.onclick(); return; }
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (/^[0-9]$/.test(k)) {
+      if (sel < 0) return;
+      e.preventDefault(); const d = +k;
+      if (pend !== null) { const x = pend * 10 + d; clearPend(); place(x <= maxv ? x : d || 0); return; }
+      if (d === 0) return;
+      if (d * 10 <= maxv) { pend = d; draw(); pendT = setTimeout(() => { const x = pend; pend = null; if (x) place(x); else draw(); }, 800); return; }
+      place(d); return;
+    }
+    const moves = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
+    if (moves[k]) { e.preventDefault(); clearPend(); moveSel(...moves[k]); return; }
+    if (k === 'Backspace' || k === 'Delete') { if (sel >= 0) { e.preventDefault(); clearPend(); place(0); } return; }
+    if (k === 'Escape') { clearPend(); sel = -1; draw(); }
+  }
+  document.addEventListener('keydown', onKey);
   und.onclick = () => { const u = undo[round].pop(); if (!u || doneHere()) return; v[u[0]] = u[1]; msg = ''; save(); draw(); };
   era.onclick = () => { if (sel >= 0 && v[sel]) put(v[sel]); };
   clr.onclick = () => {
@@ -1495,7 +1527,8 @@ function mountMagicSquare(card, p, opts = {}) {
     cells.forEach((b, i) => {
       b.className = 'mscell' + (locked(i) ? ' given' : '') + (clues[i] ? ' clue' : '') + (i === sel ? ' sel' : '') + (done ? ' won' : '');
       b.replaceChildren();
-      if (clues[i] && !v[i]) b.appendChild(el('span', 'mscluetxt', clues[i]));
+      if (i === sel && pend !== null) b.appendChild(el('span', 'msnum pending', pend + '_'));
+      else if (clues[i] && !v[i]) b.appendChild(el('span', 'mscluetxt', clues[i]));
       else if (v[i]) { b.appendChild(el('span', 'msnum', String(v[i]))); if (clues[i]) b.appendChild(el('span', 'msmark', '★')); }
       b.setAttribute('aria-label', `Row ${Math.floor(i / n) + 1}, column ${i % n + 1}: ${v[i] || 'empty'}${clues[i] ? '. Clue: ' + clues[i] : ''}${locked(i) ? ' (given)' : ''}`);
     });
@@ -1508,7 +1541,8 @@ function mountMagicSquare(card, p, opts = {}) {
     clueBar.textContent = sel >= 0 && (rd.clues || {})[sel] ? `★ ${(rd.clues || {})[sel]}` : sel >= 0 ? 'Pick a number for this square. Tap a used number to move it here.' : done ? '' : `Tap a square, then a number. Every line must add to ${T}.`;
     clueBar.hidden = !clueBar.textContent;
     tabBtns.forEach((b, i) => { b.setAttribute('aria-pressed', String(i === round)); b.disabled = i > 0 && two && !saved.w && !isDone(); });
-    tools.hidden = pad.hidden = done; und.disabled = !undo[round].length; if (!armed) clr.textContent = 'Clear';
+    tools.hidden = pad.hidden = keyHint.hidden = done; und.disabled = !undo[round].length; if (!armed) clr.textContent = 'Clear';
+    keyHint.textContent = `On a laptop: click a square and type the number${maxv > 9 ? ' (two digits for 10–' + maxv + ')' : ''} · arrows to move · Backspace to erase · Ctrl/Cmd+Z to undo`;
     if (!sending) { status.className = 'msg' + (msg ? ' bad' : ''); status.textContent = msg; }
     const warmDone = two && round === 0 && saved.w;
     next.hidden = !warmDone;
