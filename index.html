@@ -307,6 +307,27 @@ form.ans input:disabled { opacity: .5; }
 .slclue.met { fill: #9aa0ab; }
 .slclue.over { fill: #d2453b; }
 .sltools { gap: 8px; }
+.mstips { margin: 0; padding-left: 18px; color: var(--muted); font-size: 14px; display: flex; flex-direction: column; gap: 2px; }
+.msgrid { display: flex; flex-direction: column; gap: 4px; }
+.mstable { display: grid; gap: 4px; }
+.mscell { aspect-ratio: 1; border-radius: 8px; border: 1px solid #d8d4cb; background: #fbfaf7; color: #1d2230; display: flex; align-items: center; justify-content: center; position: relative; padding: 2px; cursor: pointer; min-width: 0; overflow: hidden; }
+.mscell .msnum { font: 700 24px var(--display); font-variant-numeric: tabular-nums; }
+.mscell.given { background: #e7e3da; cursor: default; } .mscell.given .msnum { color: #5a5f6e; }
+.mscell.clue { background: #fff4e3; border-color: #f3c58f; }
+.mscluetxt { font: 600 9.5px/1.15 var(--body); color: #8a5a17; text-align: center; overflow-wrap: anywhere; }
+.msmark { position: absolute; top: 2px; right: 4px; font-size: 9px; color: #d8891f; }
+.mscell.sel { outline: 3px solid var(--signal); outline-offset: -1px; }
+.mscell.won { border-color: #2f8f5f; } .mscell.won .msnum { color: #157a4a; }
+.mscell:focus-visible { outline: 3px solid var(--signal); }
+.mssum { display: flex; align-items: center; justify-content: center; font: 600 13px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; min-height: 22px; }
+.mssum.ok { color: #5fd4a0; } .mssum.bad { color: #ff7a6e; }
+.mssum.diag2 { justify-content: flex-end; padding-right: 2px; }
+.msclue { margin: 0; min-height: 1.4em; color: var(--ink); font-size: 14px; }
+.mspad { display: grid; gap: 6px; }
+.mskey { padding: 10px 0; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: 700 16px var(--display); cursor: pointer; }
+.mskey.used { color: var(--muted); background: transparent; text-decoration: line-through; text-decoration-thickness: 1px; }
+.mskey.here { border-color: var(--signal); color: var(--signal); text-decoration: none; }
+.mskey:disabled { opacity: .35; cursor: default; }
 .sltoolbar { display: flex; justify-content: center; gap: 4px; background: #f1f1f1; border: 1px solid #ddd; border-radius: 12px; padding: 5px; align-self: center; }
 .sltool { width: 46px; height: 40px; border-radius: 8px; border: 0; background: transparent; color: #222; display: grid; place-items: center; cursor: pointer; }
 .sltool svg { width: 26px; height: 26px; }
@@ -510,8 +531,8 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const RANK_PTS = [5, 3, 2, 1];   // 1st..4th on each puzzle
 const FINISH_PTS = 1;            // any later solve
 const POLL_MS = 12000;
-const TYPE_LABEL = { nonogram: 'Nonogram', riddle: 'Riddle', sudoku: 'Sudoku', wordsearch: 'Word search', findit: 'Find it', spotdiff: 'Spot the difference', minesweeper: 'Minesweeper', story: 'Story', logic: 'Logic grid', maze: 'Maze', connections: 'Connections', document: 'Document', slitherlink: 'Slitherlink' };
-const TRIES_TYPES = new Set(['riddle', 'findit', 'spotdiff', 'minesweeper', 'story', 'logic', 'document']);
+const TYPE_LABEL = { nonogram: 'Nonogram', riddle: 'Riddle', sudoku: 'Sudoku', wordsearch: 'Word search', findit: 'Find it', spotdiff: 'Spot the difference', minesweeper: 'Minesweeper', story: 'Story', logic: 'Logic grid', maze: 'Maze', connections: 'Connections', document: 'Document', slitherlink: 'Slitherlink', magicsquare: 'Magic square' };
+const TRIES_TYPES = new Set(['riddle', 'findit', 'spotdiff', 'minesweeper', 'story', 'logic', 'document', 'magicsquare']);
 const FAIL_WORDS = { minesweeper: ['boom', 'booms'], story: ['fail', 'fails'], maze: ['death', 'deaths'], connections: ['mistake', 'mistakes'] };   // types where attempts are failures, not guesses   // puzzle types where wrong attempts count
 const AV_COLORS = ['#ff9d3c', '#5fd4a0', '#7fb2ff', '#f5c84c', '#ff7eb6', '#b59cff', '#5fd0e0', '#d9925b'];
 
@@ -780,7 +801,7 @@ function renderToday() {
       };
       g.append(go, gm); card.appendChild(g);
     } else {
-      const mount = { nonogram: mountNonogram, riddle: mountRiddle, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper, story: mountStory, logic: mountLogic, maze: mountMaze, connections: mountConnections, document: mountDocument, slitherlink: mountSlitherlink }[p.type];
+      const mount = { nonogram: mountNonogram, riddle: mountRiddle, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper, story: mountStory, logic: mountLogic, maze: mountMaze, connections: mountConnections, document: mountDocument, slitherlink: mountSlitherlink, magicsquare: mountMagicSquare }[p.type];
       if (mount) mount(card, p); else card.appendChild(el('p', 'sub', 'This puzzle type needs an app update. Refresh the page, or tell Joaquin.'));
     }
     const side = el('div', 'card'); side.id = 'todaySide'; v.appendChild(side);
@@ -1368,6 +1389,136 @@ function mountSudoku(card, p, opts = {}) {
     sending = true; lastSent = grid; await submitGrid(p, { grid }, status); sending = false; draw();
   }
   card._sync = draw; draw(); check();
+}
+
+/* ---------- magic square ---------- */
+// Rounds: optional 3×3 warm-up (checked on the phone), then the main square (checked by the server).
+// Givens are locked numbers; clue cells show trivia whose answer is the number that goes there.
+function mountMagicSquare(card, p, opts = {}) {
+  const cfg = p.config || {};
+  const rounds = [cfg.warmup, cfg.main || cfg].filter(x => x && x.n);
+  const two = rounds.length > 1;
+  const LK = (opts.preview ? 'jdc-ms-preview-' : 'jdc-ms-') + p.id;
+  let saved = {}; if (!opts.preview) { try { saved = JSON.parse(store.get(LK) || '{}') || {}; } catch (e) { saved = {}; } }
+  const vals = rounds.map((rd, i) => { const n = rd.n * rd.n, s = saved.v && saved.v[i]; const v = Array.isArray(s) && s.length === n ? s.map(x => +x || 0) : Array(n).fill(0); Object.entries(rd.givens || {}).forEach(([k, x]) => v[+k] = +x); return v; });
+  let round = two && !saved.w ? 0 : rounds.length - 1;
+  if (typeof saved.r === 'number' && saved.r < rounds.length && (saved.r === 0 || saved.w)) round = saved.r;
+  let sel = -1, undo = rounds.map(() => []), previewDone = false, sending = false, lastSent = '', msg = '';
+  const save = () => { if (!opts.preview) store.set(LK, JSON.stringify({ v: vals, r: round, w: !!saved.w })); };
+  const isDone = () => opts.preview ? previewDone : !!solvedState(p, opts);
+  const doneHere = () => round === rounds.length - 1 ? isDone() : !!saved.w;
+
+  if (cfg.brief) card.appendChild(el('p', 'sub', cfg.brief));
+  const tabs = el('div', 'seg sltabs'); tabs.setAttribute('role', 'group'); tabs.setAttribute('aria-label', 'Round');
+  const tabBtns = rounds.map((rd, i) => { const b = el('button', null, two ? (i === 0 ? 'Round 1 · Warm-up' : 'Round 2') : 'Puzzle'); b.type = 'button'; b.onclick = () => go(i); tabs.appendChild(b); return b; });
+  if (two) card.appendChild(tabs);
+  const tips = el('ul', 'mstips'); card.appendChild(tips);
+  const gridBox = el('div', 'msgrid'); card.appendChild(gridBox);
+  const clueBar = el('p', 'msclue'); card.appendChild(clueBar);
+  const pad = el('div', 'mspad'); card.appendChild(pad);
+  const tools = el('div', 'row sltools');
+  const und = el('button', 'btn small', 'Undo'); und.type = 'button';
+  const era = el('button', 'btn small', 'Erase'); era.type = 'button';
+  const clr = el('button', 'btn small', 'Clear'); clr.type = 'button';
+  tools.append(und, era, clr); card.appendChild(tools);
+  const status = el('p', 'msg'); status.setAttribute('aria-live', 'polite'); card.appendChild(status);
+  const next = el('div', 'slnext'); next.hidden = true; card.appendChild(next);
+  const w = winCard('Magic'); card.appendChild(w.win);
+
+  let rd, n, T, maxv, v, cells, rowSums, colSums, d1, d2, padBtns, armed = false;
+  const locked = i => (rd.givens || {})[i] != null;
+  const lines = () => {
+    const L = [];
+    for (let r = 0; r < n; r++) L.push({ k: 'r' + r, c: [...Array(n).keys()].map(c => r * n + c) });
+    for (let c = 0; c < n; c++) L.push({ k: 'c' + c, c: [...Array(n).keys()].map(r => r * n + c) });
+    L.push({ k: 'd1', c: [...Array(n).keys()].map(i => i * n + i) }, { k: 'd2', c: [...Array(n).keys()].map(i => i * n + (n - 1 - i)) });
+    return L;
+  };
+  function build() {
+    rd = rounds[round]; n = rd.n; maxv = n * n; T = n * (maxv + 1) / 2; v = vals[round];
+    if (sel >= 0 && (sel >= maxv || locked(sel))) sel = -1;
+    tips.replaceChildren(...(rd.tips || []).map(t => el('li', null, t)));
+    // grid: n×n cells, a sum after each row, a sum under each column, diagonal sums in the corners
+    const tbl = el('div', 'mstable'); tbl.style.gridTemplateColumns = `repeat(${n}, minmax(0, 1fr)) 40px`;
+    cells = []; rowSums = []; colSums = [];
+    for (let r = 0; r < n; r++) {
+      for (let c = 0; c < n; c++) {
+        const i = r * n + c, b = el('button', 'mscell'); b.type = 'button';
+        b.onclick = () => { if (locked(i) || doneHere()) return; sel = sel === i ? -1 : i; draw(); };
+        tbl.appendChild(b); cells.push(b);
+      }
+      const s = el('div', 'mssum'); tbl.appendChild(s); rowSums.push(s);
+    }
+    for (let c = 0; c < n; c++) { const s = el('div', 'mssum col'); tbl.appendChild(s); colSums.push(s); }
+    d1 = el('div', 'mssum diag'); tbl.appendChild(d1);
+    d2 = el('div', 'mssum diag2');
+    gridBox.replaceChildren(d2, tbl);
+    pad.replaceChildren(); pad.style.gridTemplateColumns = `repeat(${n === 3 ? 5 : 8}, 1fr)`;
+    padBtns = [];
+    for (let x = 1; x <= maxv; x++) { const b = el('button', 'mskey', String(x)); b.type = 'button'; b.onclick = () => put(x); pad.appendChild(b); padBtns.push(b); }
+  }
+  function put(x) {
+    if (sel < 0 || locked(sel) || doneHere()) return;
+    if (x && v.includes(x) && v[sel] !== x) { const j = v.indexOf(x); if (locked(j)) return; undo[round].push([j, v[j]]); v[j] = 0; }   // a number lives in one cell: move it
+    undo[round].push([sel, v[sel]]); v[sel] = v[sel] === x ? 0 : x;
+    msg = ''; save(); draw(); check();
+  }
+  und.onclick = () => { const u = undo[round].pop(); if (!u || doneHere()) return; v[u[0]] = u[1]; msg = ''; save(); draw(); };
+  era.onclick = () => { if (sel >= 0 && v[sel]) put(v[sel]); };
+  clr.onclick = () => {
+    if (doneHere()) return;
+    const free = v.map((x, i) => [i, x]).filter(([i, x]) => x && !locked(i)); if (!free.length) return;
+    if (!armed) { armed = true; clr.textContent = 'Sure?'; setTimeout(() => { armed = false; draw(); }, 3000); return; }
+    armed = false; free.forEach(([i, x]) => { undo[round].push([i, x]); v[i] = 0; }); msg = ''; save(); draw();
+  };
+  function go(i) { if (i === round || (i > 0 && two && !saved.w && !isDone())) return; round = i; sel = -1; msg = ''; save(); build(); draw(); }
+  function lineState(c) { const xs = c.map(i => v[i]), s = xs.reduce((a, b) => a + b, 0), full = xs.every(Boolean); return { s, cls: s > T || (full && s !== T) ? 'bad' : full ? 'ok' : '' }; }
+  function draw() {
+    const done = doneHere(), clues = rd.clues || {};
+    cells.forEach((b, i) => {
+      b.className = 'mscell' + (locked(i) ? ' given' : '') + (clues[i] ? ' clue' : '') + (i === sel ? ' sel' : '') + (done ? ' won' : '');
+      b.replaceChildren();
+      if (clues[i] && !v[i]) b.appendChild(el('span', 'mscluetxt', clues[i]));
+      else if (v[i]) { b.appendChild(el('span', 'msnum', String(v[i]))); if (clues[i]) b.appendChild(el('span', 'msmark', '★')); }
+      b.setAttribute('aria-label', `Row ${Math.floor(i / n) + 1}, column ${i % n + 1}: ${v[i] || 'empty'}${clues[i] ? '. Clue: ' + clues[i] : ''}${locked(i) ? ' (given)' : ''}`);
+    });
+    for (let r = 0; r < n; r++) { const st = lineState([...Array(n).keys()].map(c => r * n + c)); rowSums[r].textContent = st.s || ''; rowSums[r].className = 'mssum ' + st.cls; }
+    for (let c = 0; c < n; c++) { const st = lineState([...Array(n).keys()].map(r => r * n + c)); colSums[c].textContent = st.s || ''; colSums[c].className = 'mssum col ' + st.cls; }
+    const s1 = lineState([...Array(n).keys()].map(i => i * n + i)), s2 = lineState([...Array(n).keys()].map(i => i * n + (n - 1 - i)));
+    d1.textContent = s1.s ? '↘' + s1.s : '↘'; d1.className = 'mssum diag ' + s1.cls;
+    d2.textContent = s2.s ? s2.s + '↙' : '↙'; d2.className = 'mssum diag2 ' + s2.cls;
+    padBtns.forEach((b, k) => { const x = k + 1, j = v.indexOf(x); b.disabled = done || sel < 0 || (j >= 0 && locked(j)); b.classList.toggle('used', j >= 0); b.classList.toggle('here', j === sel && sel >= 0); });
+    clueBar.textContent = sel >= 0 && (rd.clues || {})[sel] ? `★ ${(rd.clues || {})[sel]}` : sel >= 0 ? 'Pick a number for this square. Tap a used number to move it here.' : done ? '' : `Tap a square, then a number. Every line must add to ${T}.`;
+    clueBar.hidden = !clueBar.textContent;
+    tabBtns.forEach((b, i) => { b.setAttribute('aria-pressed', String(i === round)); b.disabled = i > 0 && two && !saved.w && !isDone(); });
+    tools.hidden = pad.hidden = done; und.disabled = !undo[round].length; if (!armed) clr.textContent = 'Clear';
+    if (!sending) { status.className = 'msg' + (msg ? ' bad' : ''); status.textContent = msg; }
+    const warmDone = two && round === 0 && saved.w;
+    next.hidden = !warmDone;
+    if (warmDone) { const b = el('button', 'btn primary', 'Start Round 2'); b.type = 'button'; b.onclick = () => go(rounds.length - 1); next.replaceChildren(el('p', null, 'Warm-up done. Round 2 is 4×4: numbers 1–16, every line adds to 34, and some starting numbers are hidden behind trivia.'), b); }
+    w.win.hidden = !(round === rounds.length - 1 && isDone());
+    if (!w.win.hidden) fillWin(w, p, opts, previewDone);
+  }
+  function magic() { return v.every(Boolean) && new Set(v).size === v.length && lines().every(l => l.c.reduce((a, i) => a + v[i], 0) === T); }
+  async function check() {
+    if (!magic()) return;
+    if (two && round === 0) { saved.w = true; sel = -1; save(); draw(); return; }
+    if (opts.preview) {
+      const ok = !cfg.previewSolution || v.join(',') === cfg.previewSolution;
+      if (ok) { previewDone = true; sel = -1; } else msg = 'That’s a real magic square, but not the one we hid. One of your trivia numbers is off.';
+      return draw();
+    }
+    const grid = v.join(',');
+    if (!S.me || sending || grid === lastSent || isDone()) return;
+    sending = true; lastSent = grid; status.className = 'msg wait'; status.textContent = 'Checking with the server…';
+    try {
+      const res = await rpc('submit_solution', { p_token: token, p_puzzle: p.id, p_answer: { grid } });
+      msg = res.correct ? '' : 'That’s a real magic square, but not the one we hid. One of your trivia numbers is off.';
+      if (res.correct) sel = -1;
+    } catch (e) { msg = e.message; }
+    sending = false; await refresh(); draw();
+  }
+  build(); card._sync = draw; draw();
 }
 
 /* ---------- slitherlink ---------- */
@@ -3531,7 +3682,7 @@ function bootPreview(P) {
   const r = el('div', 'row wrap'); r.append(el('span', 'chip live', (TYPE_LABEL[P.type] || P.type) + ' · preview'), el('span', 'legend', 'Exactly how challengers will see it. Nothing is recorded.'));
   v.append(r, el('h2', null, P.title));
   const card = el('div', 'card'); card.id = 'player'; v.appendChild(card);
-  const mount = { nonogram: mountNonogram, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper, story: mountStory, logic: mountLogic, maze: mountMaze, connections: mountConnections, document: mountDocument, slitherlink: mountSlitherlink }[P.type];
+  const mount = { nonogram: mountNonogram, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper, story: mountStory, logic: mountLogic, maze: mountMaze, connections: mountConnections, document: mountDocument, slitherlink: mountSlitherlink, magicsquare: mountMagicSquare }[P.type];
   if (mount) { store.set('jdc-nono-preview-' + P.id, null); mount(card, P, { preview: true }); }
   else card.appendChild(el('p', 'sub', 'No preview for this puzzle type yet.'));
   const again = el('button', 'btn small', 'Start over'); again.type = 'button'; again.onclick = () => bootPreview(P);
