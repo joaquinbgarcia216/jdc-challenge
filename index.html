@@ -802,7 +802,7 @@ function renderToday() {
       g.append(go, gm); card.appendChild(g);
     } else {
       const mount = { nonogram: mountNonogram, riddle: mountRiddle, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper, story: mountStory, logic: mountLogic, maze: mountMaze, connections: mountConnections, document: mountDocument, slitherlink: mountSlitherlink, magicsquare: mountMagicSquare }[p.type];
-      if (mount) mount(card, p); else card.appendChild(el('p', 'sub', 'This puzzle type needs an app update. Refresh the page, or tell Joaquin.'));
+      if (mount) { const gl = guestCluebook(p); if (gl) card.appendChild(gl); mount(card, p); } else card.appendChild(el('p', 'sub', 'This puzzle type needs an app update. Refresh the page, or tell Joaquin.'));
     }
     const side = el('div', 'card'); side.id = 'todaySide'; v.appendChild(side);
   }
@@ -1115,6 +1115,7 @@ function renderPreview(panel, p) {
   const head = el('div', 'row between wrap'); head.append(el('h2', null, 'Preview'), el('span', 'chip', 'Nothing is recorded'));
   panel.append(head, el('h2', null, p.title));
   const body = el('div', 'stack'); panel.appendChild(body);
+  const gl = guestCluebook(p, { preview: true }); if (gl) body.appendChild(gl);
   if (p.type === 'nonogram') { store.set('jdc-nono-preview-' + p.id, null); mountNonogram(body, p, { preview: true }); }
   else if (p.type === 'sudoku') mountSudoku(body, p, { preview: true });
   else if (p.type === 'wordsearch') mountWordsearch(body, p, { preview: true });
@@ -1126,6 +1127,8 @@ function renderPreview(panel, p) {
   else if (p.type === 'maze') mountMaze(body, p, { preview: true });
   else if (p.type === 'connections') mountConnections(body, p, { preview: true });
   else if (p.type === 'document') mountDocument(body, p, { preview: true });
+  else if (p.type === 'slitherlink') mountSlitherlink(body, p, { preview: true });
+  else if (p.type === 'magicsquare') mountMagicSquare(body, p, { preview: true });
   else if (p.type === 'riddle') {
     const cfg = p.config || {};
     if (cfg.brief) body.appendChild(el('p', 'sub', cfg.brief));
@@ -1389,6 +1392,20 @@ function mountSudoku(card, p, opts = {}) {
     sending = true; lastSent = grid; await submitGrid(p, { grid }, status); sending = false; draw();
   }
   card._sync = draw; draw(); check();
+}
+
+/* ---------- Cluebook link for guests ---------- */
+// Puzzles marked config.cluebook (or the older config.guestLink) need the JDC West Cluebook. Guests and the coach view get a link;
+// challengers don't, because they're expected to know it by heart.
+const CLUEBOOK_URL = 'https://www.jdcwest.org/cluebook/';
+function guestCluebook(p, opts = {}) {
+  const c = (p && p.config) || {};
+  if (!c.cluebook && !c.guestLink) return null;
+  if (!opts.preview && S && S.me && roleOf(S.me) === 'challenger') return null;
+  const box = el('p', 'legend guestlink'), a = el('a', null, (c.guestLink && c.guestLink.label) || 'Open the JDC West Cluebook');
+  a.href = (c.guestLink && c.guestLink.url) || CLUEBOOK_URL; a.target = '_blank'; a.rel = 'noopener';
+  box.append(opts.preview ? 'Guests see this (challengers don’t): ' : 'Not a challenger? This puzzle needs the Cluebook: ', a);
+  return box;
 }
 
 /* ---------- magic square ---------- */
@@ -3384,11 +3401,6 @@ function mountDocument(card, p, opts = {}) {
   card.appendChild(mail);
   if (cfg.sheet) card.appendChild(docSheet(p, cfg.sheet));
   // Reference link for guests and the coach; challengers are expected to know it by heart.
-  if (cfg.guestLink && (opts.preview || !S.me || roleOf(S.me) !== 'challenger')) {
-    const gl = el('p', 'legend guestlink'); const a = el('a', null, cfg.guestLink.label || cfg.guestLink.url);
-    a.href = cfg.guestLink.url; a.target = '_blank'; a.rel = 'noopener';
-    gl.append(cfg.guestLink.before || 'Not a challenger? ', a); card.appendChild(gl);
-  }
 
   // answer box, hints, result
   const form = el('form', 'ans'); form.autocomplete = 'off';
@@ -3683,7 +3695,7 @@ function bootPreview(P) {
   v.append(r, el('h2', null, P.title));
   const card = el('div', 'card'); card.id = 'player'; v.appendChild(card);
   const mount = { nonogram: mountNonogram, sudoku: mountSudoku, wordsearch: mountWordsearch, findit: mountFindit, spotdiff: mountSpotdiff, minesweeper: mountMinesweeper, story: mountStory, logic: mountLogic, maze: mountMaze, connections: mountConnections, document: mountDocument, slitherlink: mountSlitherlink, magicsquare: mountMagicSquare }[P.type];
-  if (mount) { store.set('jdc-nono-preview-' + P.id, null); mount(card, P, { preview: true }); }
+  if (mount) { store.set('jdc-nono-preview-' + P.id, null); const gl = guestCluebook(P, { preview: true }); if (gl) card.appendChild(gl); mount(card, P, { preview: true }); }
   else card.appendChild(el('p', 'sub', 'No preview for this puzzle type yet.'));
   const again = el('button', 'btn small', 'Start over'); again.type = 'button'; again.onclick = () => bootPreview(P);
   v.appendChild(again);
